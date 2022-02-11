@@ -42,7 +42,7 @@ def ass_time(timedelta):    #input 'datetime.timedelta' object, return ass time 
 
 
 def danmu_to_ass(live_info):
-    video_info = live_info.cur_video
+    video_info = live_info.curr_video
     # end_time_lst = [datetime.timedelta(seconds=0)]  #(danmu_end-last_danmu_end)  speed() "Each line in the subtitle"
     end_time_lst = video_info.danmu_end_time
     def on_message(ws, message):
@@ -94,6 +94,7 @@ def danmu_to_ass(live_info):
                                                                     danmu)
                     live_info.num_danmu_total += 1
                     # print(danmu)
+                    print(video_info.ass_name)
                     if os.path.exists(video_info.ass_name) == True:
                         with open(video_info.ass_name,"a",encoding='UTF-8') as f:
                             f.write(ass_line)

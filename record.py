@@ -5,8 +5,8 @@ import json
 from threading import Thread
 import sys
 
-from .api import is_live,get_stream_url,ws_open_msg,room_id
-from .ws import danmu_ws
+from api import is_live,get_stream_url,ws_open_msg,room_id
+from ws import danmu_ws
 
 import subprocess
 
@@ -175,6 +175,9 @@ class Recorder(App):
     
         class Video():
             def __init__(self,up_name,timeFormat,live_dir):
+                self.init(up_name,timeFormat,live_dir)
+                return
+            def init(self,up_name,timeFormat,live_dir):
                 self.timeFormat = timeFormat
                 self.time_create = datetime.datetime.now()
                 self.up_name = up_name
@@ -194,14 +197,14 @@ class Recorder(App):
             self.time_create = datetime.datetime.now()
             self.num_danmu_total = 0
             self.live_dir = live_dir
-            self.gen_video_info()
+            self.curr_video = self.Video(self.up_name,self.timeFormat,self.live_dir)
             self.record_info_dir = os.path.join(self.live_dir, self.video_info_dir)
             os.makedirs(self.record_info_dir , exist_ok = True)
             self.dump_record_info()
             return
 
         def gen_video_info(self):
-            self.curr_video = self.Video(self.up_name,self.timeFormat,self.live_dir)
+            self.curr_video.init(self.up_name,self.timeFormat,self.live_dir) #Reuse the same object
             return
 
 

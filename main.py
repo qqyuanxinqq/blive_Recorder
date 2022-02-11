@@ -1,5 +1,5 @@
 import sys
-from .record import Recorder
+from record import Recorder
 
 if __name__ == '__main__':
     # Get up_name from prompt
