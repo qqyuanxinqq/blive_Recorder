@@ -7,6 +7,7 @@ import sys
 
 from api import is_live,get_stream_url,ws_open_msg,room_id
 from ws import danmu_ws
+from flvmeta import flvmeta_update
 
 import subprocess
 
@@ -47,10 +48,12 @@ class App():
 class Recorder(App):
     def __init__(self, up_name):
         self._upload = 0    #Whether upload enabled, default not
+        self.flvtag_update = 0  #Whether apply flvmeta to update flv tags
         super().__init__(up_name)
         self.live_dir = os.path.join(self._path, up_name)
         self.div_size = eval("1024*1024*1024*" + self._div_size_gb)
         self._room_id = room_id(self._room_id)
+        
         
         if self._upload == 1:
             #username/password or token file needed
@@ -77,34 +80,16 @@ class Recorder(App):
             return None,None
         return real_url,headers
         
-            
     def recording(self):
         while 1:
             while not self.check_live_status():
-                print("[%s]未开播"%self._id,datetime.datetime.now())
+                print("[%s]未开播"%self._room_id,datetime.datetime.now())
                 time.sleep(35)
 
             #Information about this live
             self.live = self.Live(self.up_name,self.live_dir)
-            
-            # now = datetime.datetime.now()
-            # # now = datetime.datetime.utcnow()+datetime.timedelta(seconds=28800)
-            # now = now
-            
-            # self.live.record_info = {'year':now.strftime("%Y"),
-            #     'month':now.strftime("%m"),
-            #     'day':now.strftime("%d"),
-            #     #Absolute path for record info file
-            #     'filename':os.path.abspath(os.path.join(self.record_info_dir, self.up_name+ now.strftime("_%Y%m%d_%H%M%S"+".json"))),
-            #     'videolist':[],
-            #     'time':now.strftime("%Y%m%d_%H%M%S"),
-            #     'up_name': self.up_name,
-            #     #Absolute path for video directory
-            #     'directory': os.path.abspath(self.up_name),
-            #     'Status':"Living",
-            #     'Uploading': "No"
-            #     }
-            
+            threads = []
+
             #When live starts
             ws = self.ws_setup()
             while self.check_live_status() == True:                   
@@ -116,35 +101,43 @@ class Recorder(App):
                     continue
 
                 #New video starts
-                self.live.gen_video_info()
+                self.live.init_video()
                 ass_gen(self.live.curr_video.ass_name,"head.ass") 
                 
                 if not self.ws_thread.is_alive():
                     print("WS has been terminated somehow!!!!")
                     ws = self.ws_setup()
-                record(real_url, self.live.curr_video.videoname, headers, self.div_size)
-                
-                #Current video ends
-                self.live.record_info.get('videolist').append(os.path.basename(self.live.curr_video.videoname))
-                print("Total number of danmu so far is : ", self.live.num_danmu_total)
-                if self.live.record_info.get('videolist') != []:
-                    with open(self.live.record_info.get('filename'), 'w') as f:
-                        json.dump(self.live.record_info, f, indent=4) 
-                    
-                    if self._upload == 1 and self.live.record_info['Uploading'] == 'No':
-                        self.live.record_info['Uploading'] = 'Yes'
-                        self.upload(self.live.record_info)
-                        
 
+                rtncode, recorded = record(real_url, self.live.curr_video.videoname, headers, self.div_size)
+                print("Total number of danmu so far is : ", self.live.num_danmu_total)
+
+                #Current video ends
+                #Dump video info
+                if recorded:
+                    t_post_record = Thread(target=self.post_record, args=(self.live.curr_video.videoname, self.live.append_curr_video))
+                    t_post_record.start()
+                    threads.append(t_post_record)
+
+                #Init upload process  
+                if self.live.record_info['Uploading'] == 'No' and self._upload == 1:
+                    self.live.record_info['Uploading'] = 'Yes'
+                    self.upload(self.live.record_info)
+                        
             #When live ends
             ws.close()
             self.live.record_info['Status'] = "Done"
+            while threads:
+                threads.pop().join()
             if self.live.record_info.get('videolist') != []:
-                with open(self.live.record_info.get('filename'), 'w') as f:
-                    json.dump(self.live.record_info, f, indent=4) 
+                self.live.dump_record_info()
             time.sleep(10)
 
 
+    def post_record(self, filename, callback):
+        if self.flvtag_update:
+            print("==========Flvmeta============")
+            print(flvmeta_update(filename))
+        callback(filename)
     
     def ws_setup(self):
         opening_msg = ws_open_msg(int(self._room_id))
@@ -174,41 +167,34 @@ class Recorder(App):
         timeFormat = "_%Y%m%d_%H-%M-%S"
     
         class Video():
-            def __init__(self,up_name,timeFormat,live_dir):
-                self.init(up_name,timeFormat,live_dir)
-                return
-            def init(self,up_name,timeFormat,live_dir):
-                self.timeFormat = timeFormat
-                self.time_create = datetime.datetime.now()
-                self.up_name = up_name
-                self.live_dir = live_dir
-                self.danmu_end_time = [datetime.timedelta(seconds=0)]
-                self.gen_filename()
-                return    
-            def gen_filename(self):
-                self.filename = os.path.join(self.live_dir, self.up_name + self.time_create.strftime(self.timeFormat))
-                self.videoname = self.filename +".flv"
-                self.ass_name = self.filename + ".ass"        
-                self.danmu_end_time.clear()
-                self.danmu_end_time.append(datetime.timedelta(seconds=0))
+            pass
         
         def __init__(self,up_name,live_dir):
             self.up_name = up_name
             self.time_create = datetime.datetime.now()
             self.num_danmu_total = 0
             self.live_dir = live_dir
-            self.curr_video = self.Video(self.up_name,self.timeFormat,self.live_dir)
+            self.curr_video = self.Video()
+            self.init_video()
             self.record_info_dir = os.path.join(self.live_dir, self.video_info_dir)
             os.makedirs(self.record_info_dir , exist_ok = True)
-            self.dump_record_info()
-            return
+            self.set_record_info()
 
-        def gen_video_info(self):
-            self.curr_video.init(self.up_name,self.timeFormat,self.live_dir) #Reuse the same object
-            return
+        def init_video(self):
+            video = self.curr_video
+            video.timeFormat = self.timeFormat
+            video.time_create = datetime.datetime.now()
+            video.up_name = self.up_name
+            video.live_dir = self.live_dir
+            video.danmu_end_time = [datetime.timedelta(seconds=0)]
+            video.filename = os.path.join(self.live_dir, self.up_name + video.time_create.strftime(self.timeFormat))
+            video.videoname = video.filename +".flv"
+            video.ass_name = video.filename + ".ass"        
+            video.danmu_end_time.clear()
+            video.danmu_end_time.append(datetime.timedelta(seconds=0))           
 
 
-        def dump_record_info(self):
+        def set_record_info(self):
             now = self.time_create
             self.record_info = {'year':now.strftime("%Y"),
                 'month':now.strftime("%m"),
@@ -224,7 +210,15 @@ class Recorder(App):
                 'Status':"Living",
                 'Uploading': "No"
                 }
-            return
+        def dump_record_info(self):
+            with open(self.record_info.get('filename'), 'w') as f:
+                json.dump(self.record_info, f, indent=4) 
+        
+        def append_curr_video(self, videoname):
+            self.record_info.get('videolist').append(os.path.basename(videoname))
+            print("Append video to record info")
+            self.dump_record_info()
+
 
         def danmu_rate(self, duration):
             prev_num = self.num_danmu_total
@@ -232,18 +226,12 @@ class Recorder(App):
             curr_num = self.num_danmu_total
             return curr_num - prev_num
 
-
-
-        
-
-
 def ass_gen(ass_name, header):
     if os.path.exists(ass_name) == False:
         with open (header,"r",encoding='UTF-8') as head:
             ass_head=head.read()
         with open (ass_name,"x",encoding='UTF-8') as f_ass:
             f_ass.write(ass_head)  
-
 
 def record(url, file_name,headers,divsize):
     if not url:
@@ -306,13 +294,11 @@ def record(url, file_name,headers,divsize):
     if os.path.isfile(file_name) and os.path.getsize(file_name) == 0:
         os.remove(file_name)
         print("os.remove({})".format(file_name))
+        return -1, ""
 
 
-        # Inject metadata
-        # p = subprocess.Popen(['nohup ./flvmeta -U ../../{} &'.format(file_name)],\
-        # shell=True, cwd="./blivedownloader/flvmeta")
-        # print("=============================")
-        # print("Injecting onMetaData")
-        # print("=============================")
+    return 0, file_name
+
+
 
 

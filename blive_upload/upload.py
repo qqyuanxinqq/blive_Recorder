@@ -2,18 +2,21 @@ from bilibiliuploader.bilibiliuploader import BilibiliUploader
 from bilibiliuploader.core import VideoPart
 import os,sys
 import json
-from time import sleep
 
 def upload(record_info):
     uploader = BilibiliUploader()
-
-    # 登录
-    #uploader.login("949579724@qq.com", "love1314520")            #-449 error because of VPN required
-    #uploader.save_login_data(file_name="bililogin.json")
         
     directory = record_info.get('directory')
     login_token_file = os.path.join(directory,"upload_log", "bililogin.json")
-    uploader.login_by_access_token_file(login_token_file)
+    
+    try:
+        uploader.login_by_access_token_file(login_token_file)
+    except Exception as e:
+        print("Error with uploader.login_by_access_token_file")
+        print(e)
+        print("Try username/password login")
+        uploader.login("username", "password")            #-449 error because of VPN required
+        uploader.save_login_data(file_name=login_token_file)
 
     # 处理视频文件
     parts = []
@@ -54,7 +57,6 @@ if __name__ == '__main__':
 
     avid, bvid = upload(record_info)
     print("Done! All video parts uploaded! Avid:{}, Bvid: {}".format(avid, bvid))
-
     
 
     

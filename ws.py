@@ -94,7 +94,7 @@ def danmu_to_ass(live_info):
                                                                     danmu)
                     live_info.num_danmu_total += 1
                     # print(danmu)
-                    print(video_info.ass_name)
+                    # print(video_info.ass_name)
                     if os.path.exists(video_info.ass_name) == True:
                         with open(video_info.ass_name,"a",encoding='UTF-8') as f:
                             f.write(ass_line)
