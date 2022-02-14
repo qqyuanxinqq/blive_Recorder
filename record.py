@@ -16,7 +16,8 @@ import subprocess
 class App():
     def __init__(self, up_name):
         os.environ['TZ'] = 'Asia/Shanghai'
-        time.tzset()
+        if os.name != 'nt':
+            time.tzset()
         
         self.up_name = up_name
         self._path = "Videos"
