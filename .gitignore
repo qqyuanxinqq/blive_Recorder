@@ -130,7 +130,6 @@ dmypy.json
 
 data/
 log/
-config/*
 !config/config.json
 
 # vscode
