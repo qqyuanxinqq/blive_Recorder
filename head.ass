@@ -1,6 +1,5 @@
 ﻿[Script Info]
-Title: bilibili ASS 弹幕在线转换
-Original Script: 根据 34788374.xml 的弹幕信息，由 https://github.com/tiansh/us-danmaku 生成
+Title: blive_Recorder danmu generator
 ScriptType: v4.00+
 Collisions: Normal
 PlayResX: 768

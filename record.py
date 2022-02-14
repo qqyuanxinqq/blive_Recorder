@@ -88,6 +88,7 @@ class Recorder(App):
 
             #Information about this live
             self.live = self.Live(self.up_name,self.live_dir)
+            self.live.dump_record_info()
             threads = []
 
             #When live starts
@@ -112,8 +113,9 @@ class Recorder(App):
                 print("Total number of danmu so far is : ", self.live.num_danmu_total)
 
                 #Current video ends
-                #Dump video info
                 if recorded:
+                    #Modify recorded video and dump updated record_info
+                    self.live.dump_record_info()
                     t_post_record = Thread(target=self.post_record, args=(self.live.curr_video.videoname, self.live.append_curr_video))
                     t_post_record.start()
                     threads.append(t_post_record)
@@ -128,8 +130,7 @@ class Recorder(App):
             self.live.record_info['Status'] = "Done"
             while threads:
                 threads.pop().join()
-            if self.live.record_info.get('videolist') != []:
-                self.live.dump_record_info()
+            self.live.dump_record_info()
             time.sleep(10)
 
 
@@ -151,16 +152,15 @@ class Recorder(App):
     def upload(self, record_info):
         upload_log_dir = os.path.join(self.live_dir,"upload_log")
         os.makedirs(upload_log_dir, exist_ok = True)
-        logfile = os.path.join('..' , upload_log_dir , record_info.get('time') + '.log')
+        logfile = os.path.join(upload_log_dir , record_info.get('time') + '.log')
 
         #Uploading process runs at blive_upload directory
-        p = subprocess.Popen(['nohup python3 -u upload.py {} > {} 2>&1  & echo $! > {}'.format(\
-        record_info.get('filename'), logfile, logfile)],\
-        shell=True, cwd="./blive_upload")
+        p = subprocess.Popen(['nohup python3 -u ./blive_upload/{}.py {} > {} 2>&1  & echo $! > {}'.format(\
+        self.up_name,record_info.get('filename'), logfile, logfile)],\
+        shell=True)
         print("=============================")
         print("开始上传"+record_info.get('time'))
         print("=============================")
-        return
 
     class Live():
         video_info_dir = "video_list"
@@ -199,6 +199,7 @@ class Recorder(App):
             self.record_info = {'year':now.strftime("%Y"),
                 'month':now.strftime("%m"),
                 'day':now.strftime("%d"),
+                'hour':now.strftime("%H"),
                 'time_format':self.timeFormat,
                 'time':now.strftime(self.timeFormat),
                 #Absolute path for record info file

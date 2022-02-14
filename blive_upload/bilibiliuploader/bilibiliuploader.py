@@ -14,6 +14,8 @@ class BilibiliUploader():
         code, self.access_token, self.refresh_token, self.sid, self.mid, _ = core.login(username, password)
         if code != 0: # success
             print("login fail, error code = {}".format(code))
+            return -1
+        return 0
 
     def login_by_access_token(self, access_token, refresh_token=None):
         self.access_token = access_token

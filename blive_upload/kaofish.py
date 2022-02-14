@@ -11,11 +11,19 @@ def upload(record_info):
     
     try:
         uploader.login_by_access_token_file(login_token_file)
+        print("Successful! Logged in by token.")
     except Exception as e:
         print("Error with uploader.login_by_access_token_file")
         print(e)
         print("Try username/password login")
-        uploader.login("username", "password")            #-449 error because of VPN required
+        
+        #Edit username and password here
+        #此处输入上传账户的用户名和密码， 替换"username", "password"字符
+        rtncode = uploader.login("username", "password")            #-449 error because of VPN required
+        
+        
+        if rtncode != 0:
+            raise Exception("username/password login fail")
         uploader.save_login_data(file_name=login_token_file)
 
     # 处理视频文件
@@ -28,13 +36,14 @@ def upload(record_info):
         ))
 
     
-    # 上传
+    #Edit Information here, details in https://github.com/FortuneDayssss/BilibiliUploader
+    #此处修改上传内容，标题，简介，tag等，详见https://github.com/FortuneDayssss/BilibiliUploader
     avid, bvid = uploader.upload(
         parts=parts,
         copyright=1,
-        title='【⭐烤鱼子{}.{}录播⭐】摸了摸了'.format(record_info.get('month'),record_info.get('day')),
+        title='【⭐烤鱼子{}.{}.{}时 录播⭐】摸了摸了'.format(record_info.get('month'),record_info.get('day'), record_info.get('hour')),
         tid=17,
-        tag=",".join(["烤鱼", "烤鱼子", "录播", "烤鱼子Official"]),
+        tag=",".join(["烤鱼", "烤鱼子", "录播", "烤鱼子Official", "烤鱼录播"]),
         desc='''⭐烤鱼子Official⭐{}.{}.{} 直播，单推地址：https://live.bilibili.com/22259479
 粉丝群：烤鱼盖浇饭研究协会：784611303，欢迎来摸鱼
 
@@ -43,7 +52,6 @@ def upload(record_info):
         max_retry = 10,
         video_list_json = record_info.get('filename')
     )
-    
     return avid, bvid
     
 
