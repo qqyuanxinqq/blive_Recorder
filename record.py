@@ -33,7 +33,6 @@ class App():
         #     logs = now.strftime("_%Y%m%d_%H%M%S" + up_name + "\n")
         #     f.write(logs)
 
-
     def configCheck(self, configpath, up_name):
         if os.path.exists(configpath) == None:
             print("请确认config目录下$up_name.json存在，并填写相关配置内容".format(configpath))
@@ -168,7 +167,16 @@ class Recorder(App):
         timeFormat = "_%Y%m%d_%H-%M-%S"
     
         class Video():
-            pass
+            def __init__(self) -> None:
+                #Actually initiate by Live.init_video()
+                self.danmu_end_time = [datetime.timedelta(seconds=0)]
+                self.timeFormat = ""
+                self.time_create = datetime.datetime.now()
+                self.up_name = ""
+                self.live_dir = ""
+                self.filename = ""
+                self.videoname = ""
+                self.ass_name = ""
         
         def __init__(self,up_name,live_dir):
             self.up_name = up_name
@@ -187,7 +195,6 @@ class Recorder(App):
             video.time_create = datetime.datetime.now()
             video.up_name = self.up_name
             video.live_dir = self.live_dir
-            video.danmu_end_time = [datetime.timedelta(seconds=0)]
             video.filename = os.path.join(self.live_dir, self.up_name + video.time_create.strftime(self.timeFormat))
             video.videoname = video.filename +".flv"
             video.ass_name = video.filename + ".ass"        

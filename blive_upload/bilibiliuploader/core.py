@@ -6,12 +6,11 @@ import os
 import math
 import hashlib
 from bilibiliuploader.util.retry import Retry
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 import base64
 from time import sleep
 import json
 import sys
-
 
 
 # From PC ugc_assisstant
@@ -80,7 +79,8 @@ def get_key(sid=None, jsessionid=None):
         "https://passport.bilibili.com/api/oauth2/getKey",
         headers=headers,
         data=post_data,
-        cookies=cookie
+        cookies=cookie,
+        timeout = 60,
     )
     r_data = r.json()['data']
     if sid:
@@ -107,7 +107,8 @@ def get_capcha(sid):
         params=params,
         cookies={
             'sid': sid
-        }
+        },
+        timeout = 60,
     )
 
     print(r.status_code)
@@ -121,7 +122,8 @@ def recognize_captcha(img: bytes):
     img_base64 = str(base64.b64encode(img), encoding='utf-8')
     r = requests.post(
         url=CAPTCHA_RECOGNIZE_URL,
-        data={'image': img_base64}
+        data={'image': img_base64},
+        timeout = 60,
     )
     return r.content.decode()
 
@@ -173,7 +175,8 @@ def login(username, password):
         data=post_data,
         cookies={
             'sid': sid
-        }
+        },
+        timeout = 60,
     )
     response = r.json()
     response_code = response['code']
@@ -247,7 +250,8 @@ def login_captcha(username, password, sid):
         cookies={
             'JSESSIONID': jsessionid,
             'sid': sid
-        }
+        },
+        timeout = 60,
     )
     response = r.json()
     if response['code'] == 0:
@@ -286,7 +290,8 @@ def login_by_access_token(access_token):
     r = requests.get(
         url="https://passport.bilibili.com/api/oauth2/info",
         headers=headers,
-        params=login_params
+        params=login_params,
+        timeout = 60,
     )
 
     login_data = r.json()['data']
@@ -324,12 +329,28 @@ def upload_cover(access_token, sid, cover_file_path):
             'sid': sid
         },
         verify=False,
+        timeout = 180,
     )
 
     return r.json()["data"]["url"]
 
+def chunk_gen(local_file_name):
+    '''
+    First return file info
+    Then starting to yield chunk and chunk info
+    '''
+    
+    file_size = os.path.getsize(local_file_name)
+    chunk_total_num = int(math.ceil(file_size / CHUNK_SIZE))
+    yield file_size,chunk_total_num
+    
+    with open(local_file_name, 'rb') as f:
+        for chunk_id in range(0, chunk_total_num):
+            chunk_data = f.read(CHUNK_SIZE)
+            yield chunk_id,chunk_data
 
-def upload_chunk(upload_url, server_file_name, local_file_name, chunk_data, chunk_size, chunk_id, chunk_total_num):
+
+def upload_chunk(upload_url, server_file_name, local_file_name, chunk_data, chunk_size, chunk_id, chunk_total_num, max_retry = 5):
     """
     upload video chunk.
     Args:
@@ -355,27 +376,28 @@ def upload_chunk(upload_url, server_file_name, local_file_name, chunk_data, chun
         'md5': (None, cipher.md5_bytes(chunk_data)),
         'file': (local_file_name, chunk_data, 'application/octet-stream')
     }
-    # print("---------Before post", datetime.now())
-    # print(upload_url)
-    r = requests.post(
+    status, r = Retry(max_retry=max_retry, check_func= check_upload_chunk).run(
+        requests.post,
         url=upload_url,
         files=files,
         cookies={
             'PHPSESSID': server_file_name
         },
         timeout = 600,        
-    )
-    print(r.status_code)
-    # print("---------After post", datetime.now())
-    print(r.content)
+    )   
+    
+    if not status:
+        print(r.content)
+    return status
 
+def check_upload_chunk(r):
     if r.status_code == 200 and r.json()['OK'] == 1:
         return True
     else:
         return False
 
 
-def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5):
+def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5, thread_pool_workers = 1):
     """
     upload a video file.
     Args:
@@ -403,6 +425,7 @@ def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5
             'sid': sid
         },
         verify=False,
+        timeout = 60,
     )
 
     pre_upload_data = r.json()
@@ -410,32 +433,46 @@ def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5
     complete_upload_url = pre_upload_data['complete']
     server_file_name = pre_upload_data['filename']
     local_file_name = video_part.path
+    chunk_generator = chunk_gen(local_file_name)
 
-    file_size = os.path.getsize(local_file_name)
-    chunk_total_num = int(math.ceil(file_size / CHUNK_SIZE))
+    file_size,chunk_total_num = next(chunk_generator)
     file_hash = hashlib.md5()
-    with open(local_file_name, 'rb') as f:
-        for chunk_id in range(0, chunk_total_num):
-            chunk_data = f.read(CHUNK_SIZE)
+     
+    with ThreadPoolExecutor(max_workers=thread_pool_workers) as tpe:
+        t_list = set()
+        readed_chunks = 0
+        while readed_chunks < chunk_total_num or t_list:
+            while len(t_list)<= thread_pool_workers:
+                try:
+                    chunk_id,chunk_data = next(chunk_generator)
+                    file_hash.update(chunk_data)
+                    readed_chunks +=1
+                except StopIteration:
+                    break
+                
+                t_obj = tpe.submit(
+                    upload_chunk,
+                    upload_url,
+                    server_file_name,
+                    os.path.basename(local_file_name),
+                    chunk_data,
+                    CHUNK_SIZE,
+                    chunk_id,
+                    chunk_total_num,
+                    max_retry
+                )
+                t_list.add(t_obj)
+            
+            done, t_list = wait(t_list, return_when = "FIRST_COMPLETED")
 
-            status = Retry(max_retry=max_retry, success_return_value=True).run(
-                upload_chunk,
-                upload_url,
-                server_file_name,
-                os.path.basename(local_file_name),
-                chunk_data,
-                CHUNK_SIZE,
-                chunk_id,
-                chunk_total_num
-            )
-
-            if not status:
-                print("upload failed in upload_video_part")
-                return False
-            file_hash.update(chunk_data)
+            for t in done:
+                if not t.result():
+                    print("upload failed in upload_video_part")
+                    return False
+            # print(t_list)
+        
     print(file_hash.hexdigest())
 
-    # complete upload
     post_data = {
         'chunks': chunk_total_num,
         'filesize': file_size,
@@ -448,8 +485,9 @@ def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5
         url=complete_upload_url,
         data=post_data,
         headers=headers,
+        timeout = 60,
     )
-    print(r.status_code)
+    print("video part finished, status code:", r.status_code)
     print(r.content)
 
     video_part.server_file_name = server_file_name
@@ -508,46 +546,38 @@ def upload(access_token,
     status = True
     post_videos_num = 0
 
-    with ThreadPoolExecutor(max_workers=thread_pool_workers) as tpe:
-        t_list = []
-        # parts is dynamic updating
-        while True:
-            if len(parts) != post_videos_num:
-                for video_part in parts[post_videos_num::]:
-                    print("upload {} added in pool".format(video_part.path))
-                    t_obj = tpe.submit(upload_video_part, access_token, sid, mid, video_part, max_retry)
-                    t_obj.video_part = video_part
-                    t_list.append(t_obj)
-                post_videos_num = len(parts)
-            
-            if video_list_json == '':
-                print("No dynamic record_info json file provided, stop waiting for new videos.")
-                break
-            # else:
-            #     print("Trakcing provided record_info json file.")
-            
-            sleep(60)
-            sys.stdout.flush()
-            record_info = record_info_fromjson(video_list_json)
-            directory = record_info.get('directory')
-            file_list=record_info.get('videolist')
-            for item in file_list[post_videos_num::]:
-                parts.append(VideoPart(
-                    path=os.path.join(directory, item),
-                    title = item.split('.')[0]
-                ))
-            if record_info.get("Status", "Done") == "Living":
-                print("The live is still on, waiting for new videos.")
-            else:
-                print("The live is done, stop waiting for new videos.")
-                video_list_json = ''
-                
-        for t_obj in as_completed(t_list):
-            status = status and t_obj.result()
-            print("video part {} finished, status: {}".format(t_obj.video_part.path, t_obj.result()))
-            if not status:
-                print("upload failed")
-                return None, None
+    # parts is dynamic updating
+    while True:
+        if len(parts) != post_videos_num:
+            for video_part in parts[post_videos_num::]:
+                print("upload {} now".format(video_part.path))
+                status = upload_video_part(access_token, sid, mid, video_part, max_retry,thread_pool_workers)
+                print("video part {} finished, status: {}".format(video_part.path, status))
+                if not status:
+                    print("upload failed")
+                    return None, None
+            post_videos_num = len(parts)
+        
+        if video_list_json == '':
+            print("No dynamic record_info json file provided, stop waiting for new videos.")
+            break
+        # else:
+        #     print("Trakcing provided record_info json file.")
+        sleep(30)
+        sys.stdout.flush()
+        record_info = record_info_fromjson(video_list_json)
+        directory = record_info.get('directory')
+        file_list=record_info.get('videolist')
+        for item in file_list[post_videos_num::]:
+            parts.append(VideoPart(
+                path=os.path.join(directory, item),
+                title = item.split('.')[0]
+            ))
+        if record_info.get("Status", "Done") == "Living":
+            print("The live is still on, waiting for new videos.")
+        else:
+            print("The live is done, stop waiting for new videos.")
+            video_list_json = ''
 
     # cover
     if os.path.isfile(cover):
@@ -599,6 +629,7 @@ def upload(access_token,
             'sid': sid
         },
         json=post_data,
+        timeout = 60,
     )
 
     print("submit")
@@ -631,7 +662,8 @@ def get_post_data(access_token, sid, avid):
         params=params,
         cookies={
             'sid': sid
-        }
+        },
+        timeout = 60,
     )
 
     return r.json()["data"]
@@ -793,6 +825,7 @@ def edit_videos(
             'sid': sid
         },
         json=submit_data,
+        timeout = 60,
     )
 
     print("edit submit")
