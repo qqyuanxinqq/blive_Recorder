@@ -9,7 +9,7 @@ class BilibiliUploader():
         self.refresh_token = None
         self.sid = None
         self.mid = None
-
+        
     def login(self, username, password):
         code, self.access_token, self.refresh_token, self.sid, self.mid, _ = core.login(username, password)
         if code != 0: # success

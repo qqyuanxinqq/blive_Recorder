@@ -563,7 +563,7 @@ def upload(access_token,
             break
         # else:
         #     print("Trakcing provided record_info json file.")
-        sleep(30)
+        sleep(40)
         sys.stdout.flush()
         record_info = record_info_fromjson(video_list_json)
         directory = record_info.get('directory')

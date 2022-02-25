@@ -5,7 +5,8 @@ import json
 
 def upload(record_info):
     uploader = BilibiliUploader()
-        
+
+
     directory = record_info.get('directory')
     login_token_file = os.path.join(directory,"upload_log", "bililogin.json")
     

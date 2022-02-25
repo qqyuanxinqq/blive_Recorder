@@ -4,6 +4,8 @@ import os
 import json
 from threading import Thread
 import sys
+# import fcntl  
+from filelock import FileLock
 
 from api import is_live,get_stream_url,ws_open_msg,room_id
 from ws import danmu_ws
@@ -220,8 +222,11 @@ class Recorder(App):
                 'Uploading': "No"
                 }
         def dump_record_info(self):
-            with open(self.record_info.get('filename'), 'w') as f:
-                json.dump(self.record_info, f, indent=4) 
+            filename = self.record_info.get('filename')
+            lock = FileLock(filename)
+            with lock:
+                with open(filename, 'w') as f:
+                    json.dump(self.record_info, f, indent=4) 
         
         def append_curr_video(self, videoname):
             self.record_info.get('videolist').append(os.path.basename(videoname))
