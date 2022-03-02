@@ -4,16 +4,42 @@ import os
 import json
 from threading import Thread
 import sys
-# import fcntl  
 from filelock import FileLock
+# import subprocess
+from multiprocessing import Process
 
-from api import is_live,get_stream_url,ws_open_msg,room_id
-from ws import danmu_ws
-from flvmeta import flvmeta_update
+from .api import is_live,get_stream_url,ws_open_msg,room_id
+from .ws import danmu_ws
+from .flvmeta import flvmeta_update
 
-import subprocess
+# from blive_upload import upload
+#This absolute path import requires root directory have "blive_upload" folder
 
+class Myproc(Process):
+    def __init__(self, group=None, target=None, name=None, args=(), kwargs={},
+                 *, daemon=None):
+        super().__init__(group, target, name, args, kwargs, daemon=daemon)
+        self.logfile = ""
+        self.path = "."  
 
+    def run(self):
+        import sys
+        import os
+        with open(self.logfile, "w") as f:
+            sys.stdout = f
+            sys.stderr = f
+            print(os.getpid(),flush=True)
+            if self._target:
+                try:
+                    self._target(*self._args, **self._kwargs)
+                except Exception as e:
+                    print(e)
+
+    def set_output(self,logfile):
+        self.logfile = logfile
+
+    def set_path(self,path):
+        self.path = path
 
 class App():
     def __init__(self, up_name):
@@ -49,6 +75,7 @@ class App():
 
 class Recorder(App):
     def __init__(self, up_name):
+        self.upload_func = None
         self._upload = 0    #Whether upload enabled, default not
         self.flvtag_update = 0  #Whether apply flvmeta to update flv tags
         super().__init__(up_name)
@@ -152,17 +179,25 @@ class Recorder(App):
 
     
     def upload(self, record_info):
-        upload_log_dir = os.path.join(self.live_dir,"upload_log")
-        os.makedirs(upload_log_dir, exist_ok = True)
-        logfile = os.path.join(upload_log_dir , record_info.get('time') + '.log')
+        if self.upload_func:
+            upload_log_dir = os.path.join(self.live_dir,"upload_log")
+            os.makedirs(upload_log_dir, exist_ok = True)
+            logfile = os.path.join(upload_log_dir , record_info.get('time') + '.log')
 
-        #Uploading process runs at blive_upload directory
-        p = subprocess.Popen(['nohup python3 -u ./blive_upload/{}.py {} > {} 2>&1  & echo $! > {}'.format(\
-        self.up_name,record_info.get('filename'), logfile, logfile)],\
-        shell=True)
-        print("=============================")
-        print("开始上传"+record_info.get('time'))
-        print("=============================")
+            #Uploading process runs at blive_upload directory
+            # p = subprocess.Popen(['nohup python3 -u ./blive_upload/{}.py {} > {} 2>&1  & echo $! > {}'.format(\
+            # self.up_name,record_info.get('filename'), logfile, logfile)],\
+            # shell=True)
+            p = Myproc(target = self.upload_func, args = (record_info.get('filename'),))
+            p.set_output(logfile)
+            p.start()
+            print("=============================")
+            print("开始上传"+record_info.get('time'))
+            print("=============================")
+        else:
+            print("=============================")
+            print("No upload function provided")
+            print("=============================")
 
     class Live():
         video_info_dir = "video_list"
@@ -223,8 +258,7 @@ class Recorder(App):
                 }
         def dump_record_info(self):
             filename = self.record_info.get('filename')
-            lock = FileLock(filename)
-            with lock:
+            with FileLock(filename+".lock"):
                 with open(filename, 'w') as f:
                     json.dump(self.record_info, f, indent=4) 
         

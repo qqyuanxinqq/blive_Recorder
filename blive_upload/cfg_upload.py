@@ -1,11 +1,27 @@
-from bilibiliuploader.bilibiliuploader import BilibiliUploader
-from bilibiliuploader.core import VideoPart
-import os,sys
+from .bilibiliuploader.bilibiliuploader import BilibiliUploader
+from .bilibiliuploader.core import VideoPart
+import os
 import json
+from filelock import FileLock
 
-def upload(record_info):
+
+# cfg = {
+#     "kaofish":{
+#         "username":"username",
+#         "password":"password",
+#         "copyright":1,
+#         "title":'【⭐烤鱼子{}.{}.{}时 录播⭐】摸了摸了'.format(record_info.get('month'),record_info.get('day'), record_info.get('hour')),
+#         "tid":17,
+#         "tag":",".join(["烤鱼", "烤鱼子", "录播", "烤鱼子Official", "烤鱼录播"]),
+#         "desc":'''⭐烤鱼子Official⭐{}.{}.{} 直播，单推地址：https://live.bilibili.com/22259479
+# 粉丝群：烤鱼盖浇饭研究协会：784611303，欢迎来摸鱼
+
+# 本视频系自动上传，欢迎各位在评论区留下游戏内容、分P等相关信息'''.format(record_info.get('year'), record_info.get('month'),record_info.get('day')),
+#     }
+# }
+
+def _upload(record_info):
     uploader = BilibiliUploader()
-
 
     directory = record_info.get('directory')
     login_token_file = os.path.join(directory,"upload_log", "bililogin.json")
@@ -55,18 +71,20 @@ def upload(record_info):
     )
     return avid, bvid
     
-
-if __name__ == '__main__':
-    lst = sys.argv
-    with open(lst[1], 'r') as f:
-        record_info = json.load(f)
+def upload(record_info_json):
+    with FileLock(record_info_json + '.lock'):
+        with open(record_info_json, 'r') as f:
+            record_info = json.load(f)
 
     if 'Status' not in record_info:
         print("Live status is not checked!")
 
-    avid, bvid = upload(record_info)
+    avid, bvid = _upload(record_info)
     print("Done! All video parts uploaded! Avid:{}, Bvid: {}".format(avid, bvid))
-    
+
+
+
+
 
     
     

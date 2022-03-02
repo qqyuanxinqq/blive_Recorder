@@ -1,16 +1,17 @@
 import requests
 from datetime import datetime
-from bilibiliuploader.util import cipher as cipher
+from .util import cipher as cipher
 from urllib import parse
 import os
 import math
 import hashlib
-from bilibiliuploader.util.retry import Retry
+from .util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 import base64
 from time import sleep
 import json
 import sys
+from filelock import FileLock
 
 
 # From PC ugc_assisstant
@@ -495,8 +496,9 @@ def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5
     return True
 
 def record_info_fromjson(video_list_json):
-    with open(video_list_json, 'r') as f:
-        record_info = json.load(f)
+    with FileLock(video_list_json + '.lock'):
+        with open(video_list_json, 'r') as f:
+            record_info = json.load(f)
     return record_info
 
 def upload(access_token,

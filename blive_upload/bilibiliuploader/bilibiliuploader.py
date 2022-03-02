@@ -1,5 +1,5 @@
-import bilibiliuploader.core as core
-from bilibiliuploader.util import cipher
+from . import core
+from .util import cipher
 import json
 
 
