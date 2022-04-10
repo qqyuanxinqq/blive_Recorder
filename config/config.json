@@ -1,0 +1,28 @@
+{
+    "_default": {
+        "Enabled_recorder": ["kaofish"],
+        "_name": "_default",
+        "_room_id": "",
+        "_div_size_gb": "1",
+        "_upload": 0,
+        "_flvtag_update": 1,
+        "_path": "Videos/"
+    },
+    "xiaotudou": {
+        "_name": "xiaotudou",
+        "_room_id": "2096082",
+        "_div_size_gb": "2"
+    },
+    "kaofish": {
+        "_name": "kaofish",
+        "_room_id": "22259479",
+        "_div_size_gb": "2",
+        "_upload": 1
+    },
+    "api": {
+        "_name": "api",
+        "_room_id": "92613",
+        "_div_size_gb": "0.02",
+        "_upload": 1
+    }
+}

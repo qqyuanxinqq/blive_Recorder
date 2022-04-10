@@ -1,26 +1,31 @@
-import urllib.request
+import urllib
 import json
 import re
 import time
+import logging
 
 def my_request(url):
     headers = dict()
     headers['Accept-Encoding'] = 'identity'
     headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko'
     
-    req = urllib.request.Request(url,headers=headers)
+    req = urllib.request.Request(url,headers=headers)  # type: ignore
     
-    for retry_num in range(10):
+    max_retry = 10
+    for retry_num in range(max_retry):
         try:
-            res = urllib.request.urlopen(req, timeout=10)
+            res = urllib.request.urlopen(req, timeout=10) # type: ignore
             break
-        except Exception as e:
+        except urllib.error.URLError as e: # type: ignore
+            logging.exception(e)
             print("During retry" , retry_num , "=============================")
             print(e)
             print("=============================")
             time.sleep(2)
+            if retry_num >= max_retry-1:
+                raise e
         
-    content = res.read()
+    content = res.read() # type: ignore
     return json.loads(content.decode())
 
 def is_live(roomid):
@@ -35,8 +40,8 @@ def is_live(roomid):
     elif live_status == 1:
         return True
 
-def room_id(id):
-    live_api = "https://api.live.bilibili.com/room/v1/Room/room_init?id=%s"%str(id)
+def room_id(short_id):
+    live_api = "https://api.live.bilibili.com/room/v1/Room/room_init?id=%s"%str(short_id)
     rtn = my_request(live_api)
     return rtn["data"]["room_id"]
 
@@ -58,7 +63,7 @@ def ws_open_msg(roomid):  #return the first message for websocket connection
     return opening
 
 def get_stream_url(uid):
-    stream_api = "https://api.live.bilibili.com/room/v1/Room/playUrl?cid=%s&quality=4&platform=web"%uid
+    stream_api = "https://api.live.bilibili.com/room/v1/Room/playUrl?cid=%s&quality=4&platform=web"%uid  #quality=4
     
     rtn = my_request(stream_api)
     urls = rtn.get("data").get("durl")
@@ -68,25 +73,15 @@ def get_stream_url(uid):
         while 1:
             for i in urls:
                 for referer in [True,False]:
-                    try :
-                        if retry_time >20:
-                            return None ,None
-                        retry_time+=1
-                        url = i.get("url")
-                        headers = dict()
-                        headers['Accept-Encoding'] = 'identity'
-                        headers["User-Agent"] = "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.71 Safari/537.36 " 
-                        if referer == True:
-                            headers['Referer'] = re.findall(r'(https://.*\/).*\.flv', url)[0]
-                        
-                        return i.get("url"),headers
-
-                    except Exception as e :
-                        time.sleep(1)
-                        print("retry",retry_time,"======================")
-                        print(url)
-                        print(e)
-                        retry_time+=1
-                        pass
-            
-        
+                    if retry_time >20:
+                        return None, None
+                    retry_time+=1
+                    url = i.get("url")
+                    headers = dict()
+                    headers['Accept-Encoding'] = 'identity'
+                    headers["User-Agent"] = "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.71 Safari/537.36 " 
+                    if referer == True:
+                        headers['Referer'] = re.findall(r'(https://.*\/).*\.flv', url)[0]
+                    
+                    return i.get("url"),headers
+    return None, None

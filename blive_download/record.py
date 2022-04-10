@@ -7,34 +7,51 @@ import sys
 from filelock import FileLock
 # import subprocess
 from multiprocessing import Process
+from typing import Tuple
 
 from .api import is_live,get_stream_url,ws_open_msg,room_id
 from .ws import danmu_ws
 from .flvmeta import flvmeta_update
-
+import logging
+        
 # from blive_upload import upload
 #This absolute path import requires root directory have "blive_upload" folder
+
+CONFIG_PATH = os.path.join("config","config.json")
+LOG_PATH = "logs"
 
 class Myproc(Process):
     def __init__(self, group=None, target=None, name=None, args=(), kwargs={},
                  *, daemon=None):
+        """
+        Overwritten Process class with stdout, stderr redirection.
+        """
+
         super().__init__(group, target, name, args, kwargs, daemon=daemon)
         self.logfile = ""
         self.path = "."  
 
     def run(self):
-        import sys
-        import os
+        print("Process spawned at PID: ",os.getpid(),flush=True)
         with open(self.logfile, "w") as f:
             sys.stdout = f
             sys.stderr = f
-            print(os.getpid(),flush=True)
+            print("PID: ", os.getpid(),flush=True)
             if self._target:
                 try:
                     self._target(*self._args, **self._kwargs)
                 except Exception as e:
-                    print(e)
+                    logging.exception(e)
 
+    def _post_run(self):
+        self.join()
+        print("===========Myproc==========")
+        print("Process ", self.name, "has terminated, exit code: ", self.exitcode)
+    
+    def post_run(self):
+        t = Thread(target = self._post_run)
+        t.start()
+        
     def set_output(self,logfile):
         self.logfile = logfile
 
@@ -42,47 +59,95 @@ class Myproc(Process):
         self.path = path
 
 class App():
-    def __init__(self, up_name):
-        os.environ['TZ'] = 'Asia/Shanghai'
-        if os.name != 'nt':
-            time.tzset()
+    def __init__(self, upload_func):
+        def run_recorder(up_name, upload_func):
+            recorder = Recorder(up_name, upload_func)
+            recorder.recording()
         
-        self.up_name = up_name
-        self._path = "Videos"
-        configpath = os.path.join("config",up_name+".json")
-        conf = self.configCheck(configpath, up_name)
+        self.time_create = datetime.datetime.now()
+        self.recorders = {}
 
-        for key in conf:
-            setattr(self, key, conf[key])
-
-        print("[%s]Recorder loaded"%self.up_name,datetime.datetime.now(), flush=True)
+        conf = self.configCheck(CONFIG_PATH)
+        os.makedirs(LOG_PATH, exist_ok = True)
+        
+        if conf["_default"]["Enabled_recorder"]:
+            recorder_enabled = conf["_default"]["Enabled_recorder"]
+        else:
+            recorder_enabled = conf.keys()
+        
+        for up_name in conf.keys():
+            if up_name == "_default" or up_name not in recorder_enabled:
+                continue
+            p = Myproc(target = run_recorder, args=(up_name, upload_func), name = "[{}]Recorder".format(up_name))
+            logfile = os.path.join(LOG_PATH, conf[up_name]["_name"]+ self.time_create.strftime("_%Y%m%d_%H-%M-%S") + '.log')
+            p.set_output(logfile)
+            self.recorders[up_name] = p
+            # print("[%s]Recorder set"%up_name,datetime.datetime.now(), flush=True)
         
         # with open("logs.txt","a",encoding='UTF-8') as f:
         #     logs = now.strftime("_%Y%m%d_%H%M%S" + up_name + "\n")
         #     f.write(logs)
 
-    def configCheck(self, configpath, up_name):
-        if os.path.exists(configpath) == None:
-            print("请确认config目录下$up_name.json存在，并填写相关配置内容".format(configpath))
+    def run(self):
+        for up_name, p in self.recorders.items():
+            p.start()
+            p.post_run()
+            print("[%s]Recorder loaded"%up_name,datetime.datetime.now(), flush=True)
+            time.sleep(0.1)
+            # print(p.daemon)
+        while True:
+            stopped = []
+            for up_name, p in self.recorders.items():
+                if not p.is_alive():
+                    print(datetime.datetime.now(),":")
+                    print("{} has stopped!".format(p.name))
+                    sys.stdout.flush()
+                    stopped.append(up_name)
+            while stopped:
+                self.recorders.pop(stopped.pop())
+
+            time.sleep(30)
+
+    def configCheck(self, configpath, up_name="_default"):
+        if os.path.exists(configpath) == False:
+            print("请确认配置文件{}存在，并填写相关配置内容".format(configpath))
             raise Exception("config file error!")
         conf = json.load(open(configpath))
-        if conf.get("_name",0) != up_name:
+        if conf.get(up_name,0) == 0:
+            print("请确认该配置文件中存在与%s相匹配的信息"%up_name)
+            raise Exception("config file error!")
+        if conf[up_name].get("_name",0) != up_name:
             print("请确认该配置文件中_name项的信息与%s相匹配"%up_name)
             raise Exception("config file error!")
         return conf
 
-
-
-class Recorder(App):
-    def __init__(self, up_name):
-        self.upload_func = None
-        self._upload = 0    #Whether upload enabled, default not
-        self.flvtag_update = 0  #Whether apply flvmeta to update flv tags
-        super().__init__(up_name)
-        self.live_dir = os.path.join(self._path, up_name)
-        self.div_size = eval("1024*1024*1024*" + self._div_size_gb)
-        self._room_id = room_id(self._room_id)
+class Recorder():
+    def __init__(self, up_name, upload_func =None):
+        os.environ['TZ'] = 'Asia/Shanghai'
+        if os.name != 'nt':
+            time.tzset()
+        self.up_name = up_name
+        # self._room_id = int()
+        # self._div_size_gb = int()
+        # self._flvtag_update = 0  #Whether apply flvmeta to update flv tags, default 0
+        # self._upload = 0    #Whether upload enabled, default not
+        # self._path = ""
+        self.upload_func = upload_func
+                
+        default_conf = self.configCheck(CONFIG_PATH)["_default"]
+        self._room_id = default_conf["_room_id"]
+        self._div_size_gb = default_conf["_div_size_gb"]
+        self._flvtag_update = default_conf["_flvtag_update"]
+        self._upload = default_conf["_upload"]
+        self._path = default_conf["_path"]
         
+        conf = self.configCheck(CONFIG_PATH, up_name)[self.up_name]
+        for key in conf:
+            setattr(self, key, conf[key])
+
+        self.live_dir = os.path.join(self._path, up_name)
+        self.div_size = round(eval("1024*1024*1024*" + self._div_size_gb))
+        self._room_id = room_id(self._room_id)
         
         if self._upload == 1:
             #username/password or token file needed
@@ -92,12 +157,26 @@ class Recorder(App):
         sys.stdout.flush()
 
         self.live_status = False
+        print("[%s]Recorder loaded"%self.up_name,datetime.datetime.now(), flush=True)
+    
+    def configCheck(self, configpath, up_name="_default"):
+        if os.path.exists(configpath) == False:
+            print("请确认配置文件{}存在，并填写相关配置内容".format(configpath))
+            raise Exception("config file error!")
+        conf = json.load(open(configpath))
+        if conf.get(up_name,0) == 0:
+            print("请确认该配置文件中存在与%s相匹配的信息"%up_name)
+            raise Exception("config file error!")
+        if conf[up_name].get("_name",0) != up_name:
+            print("请确认该配置文件中_name项的信息与%s相匹配"%up_name)
+            raise Exception("config file error!")
+        return conf
 
     def check_live_status(self):
         try:
             self.live_status = is_live(self._room_id)
         except Exception as e:
-            print("Error on self.check_live_status()")
+            logging.exception(e)
 
         return self.live_status
 
@@ -105,7 +184,7 @@ class Recorder(App):
         try:
             real_url,headers = get_stream_url(self._room_id)
         except Exception as e:
-            print("Error on self.get_stream_url()")
+            logging.exception(e)
             return None,None
         return real_url,headers
         
@@ -117,45 +196,47 @@ class Recorder(App):
 
             #Information about this live
             self.live = self.Live(self.up_name,self.live_dir)
-            self.live.dump_record_info()
             threads = []
+            try:
+                self.live.dump_record_info()
+                #Record this live
+                ws = self.ws_setup()
+                while self.check_live_status() == True:                   
+                    
+                    real_url,headers = self.get_stream_url()
+                    if real_url == None:
+                        print("开播了但是没有源")
+                        time.sleep(5)
+                        continue
 
-            #When live starts
-            ws = self.ws_setup()
-            while self.check_live_status() == True:                   
-                
-                real_url,headers = self.get_stream_url()
-                if real_url == None:
-                    print("开播了但是没有源")
-                    time.sleep(5)
-                    continue
+                    #New video starts
+                    self.live.init_video()
+                    ass_gen(self.live.curr_video.ass_name,"head.ass") 
+                    
+                    if not self.ws_thread.is_alive():
+                        print("WS has been terminated somehow!!!!")
+                        ws = self.ws_setup()
 
-                #New video starts
-                self.live.init_video()
-                ass_gen(self.live.curr_video.ass_name,"head.ass") 
-                
-                if not self.ws_thread.is_alive():
-                    print("WS has been terminated somehow!!!!")
-                    ws = self.ws_setup()
+                    rtncode, recorded = record(real_url, self.live.curr_video.videoname, headers, self.div_size)
+                    print("Total number of danmu so far is : ", self.live.num_danmu_total)
 
-                rtncode, recorded = record(real_url, self.live.curr_video.videoname, headers, self.div_size)
-                print("Total number of danmu so far is : ", self.live.num_danmu_total)
+                    #Current video ends
+                    if recorded:
+                        #Modify recorded video and dump updated record_info
+                        self.live.dump_record_info()
+                        t_post_record = Thread(target=self.post_record, args=(self.live.curr_video.videoname, self.live.append_curr_video))
+                        t_post_record.start()
+                        threads.append(t_post_record)
 
-                #Current video ends
-                if recorded:
-                    #Modify recorded video and dump updated record_info
-                    self.live.dump_record_info()
-                    t_post_record = Thread(target=self.post_record, args=(self.live.curr_video.videoname, self.live.append_curr_video))
-                    t_post_record.start()
-                    threads.append(t_post_record)
+                    #Init upload process  
+                    if self.live.record_info['Uploading'] == 'No' and self._upload == 1:
+                        self.live.record_info['Uploading'] = 'Yes'
+                        self.upload(self.live.record_info)
+                #When live ends
+                ws.close()
+            except Exception as e:
+                logging.exception(e)
 
-                #Init upload process  
-                if self.live.record_info['Uploading'] == 'No' and self._upload == 1:
-                    self.live.record_info['Uploading'] = 'Yes'
-                    self.upload(self.live.record_info)
-                        
-            #When live ends
-            ws.close()
             self.live.record_info['Status'] = "Done"
             while threads:
                 threads.pop().join()
@@ -164,9 +245,9 @@ class Recorder(App):
 
 
     def post_record(self, filename, callback):
-        if self.flvtag_update:
-            print("==========Flvmeta============")
-            print(flvmeta_update(filename))
+        if self._flvtag_update:
+            print("==========Flvmeta============\n", flvmeta_update(filename))
+            
         callback(filename)
     
     def ws_setup(self):
@@ -188,9 +269,10 @@ class Recorder(App):
             # p = subprocess.Popen(['nohup python3 -u ./blive_upload/{}.py {} > {} 2>&1  & echo $! > {}'.format(\
             # self.up_name,record_info.get('filename'), logfile, logfile)],\
             # shell=True)
-            p = Myproc(target = self.upload_func, args = (record_info.get('filename'),))
+            p = Myproc(target = self.upload_func, args = (record_info.get('filename'),), name="[{}]Uploader".format(self.up_name))
             p.set_output(logfile)
             p.start()
+            p.post_run()
             print("=============================")
             print("开始上传"+record_info.get('time'))
             print("=============================")
@@ -257,13 +339,13 @@ class Recorder(App):
                 'Uploading': "No"
                 }
         def dump_record_info(self):
-            filename = self.record_info.get('filename')
+            filename = self.record_info['filename']
             with FileLock(filename+".lock"):
                 with open(filename, 'w') as f:
                     json.dump(self.record_info, f, indent=4) 
         
         def append_curr_video(self, videoname):
-            self.record_info.get('videolist').append(os.path.basename(videoname))
+            self.record_info['videolist'].append(os.path.basename(videoname))
             print("Append video to record info")
             self.dump_record_info()
 
@@ -281,26 +363,27 @@ def ass_gen(ass_name, header):
         with open (ass_name,"x",encoding='UTF-8') as f_ass:
             f_ass.write(ass_head)  
 
-def record(url, file_name,headers,divsize):
+def record(url, file_name,headers,divsize) -> Tuple[int,str]:
     if not url:
-        return
+        return -1, ""
     res = None
     retry_num = 0
     r = urllib.request.Request(url,headers=headers)
     # print(url)
-    while retry_num <10 :
+    while retry_num <5 :
         try :
             # Must add timeout, otherwise program may get stuck at read(5), where fd=5 is socket.
-            res = urllib.request.urlopen(r, timeout = 5)
+            res = urllib.request.urlopen(r, timeout = 4)
             break
         except Exception as e:
+            logging.exception(e)
             print(retry_num,"=============================")
             print(e)
             print("=============================")
             retry_num +=1
             time.sleep(1)
     if not res:
-        return        
+        return -1, ""  
     
     with open(file_name, 'wb') as f:    
         print('starting download from:\n%s\nto:\n%s' % (url, file_name))
@@ -313,6 +396,7 @@ def record(url, file_name,headers,divsize):
                 _buffer = res.read(1024 * 32)
             except Exception as e:
                 _buffer = b''
+                logging.exception(e)
                 print("=============================")
                 print(e)
                 print("=============================")
@@ -343,7 +427,6 @@ def record(url, file_name,headers,divsize):
         os.remove(file_name)
         print("os.remove({})".format(file_name))
         return -1, ""
-
 
     return 0, file_name
 

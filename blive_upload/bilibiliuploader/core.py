@@ -1,4 +1,3 @@
-import requests
 from datetime import datetime
 from .util import cipher as cipher
 from urllib import parse
@@ -12,6 +11,7 @@ from time import sleep
 import json
 import sys
 from filelock import FileLock
+import requests
 
 
 # From PC ugc_assisstant
@@ -343,12 +343,12 @@ def chunk_gen(local_file_name):
     
     file_size = os.path.getsize(local_file_name)
     chunk_total_num = int(math.ceil(file_size / CHUNK_SIZE))
-    yield file_size,chunk_total_num
-    
-    with open(local_file_name, 'rb') as f:
-        for chunk_id in range(0, chunk_total_num):
-            chunk_data = f.read(CHUNK_SIZE)
-            yield chunk_id,chunk_data
+    def generator():
+        with open(local_file_name, 'rb') as f:
+            for chunk_id in range(0, chunk_total_num):
+                chunk_data = f.read(CHUNK_SIZE)
+                yield chunk_id,chunk_data
+    return  file_size,chunk_total_num, generator()
 
 
 def upload_chunk(upload_url, server_file_name, local_file_name, chunk_data, chunk_size, chunk_id, chunk_total_num, max_retry = 5):
@@ -386,15 +386,13 @@ def upload_chunk(upload_url, server_file_name, local_file_name, chunk_data, chun
         },
         timeout = 600,        
     )   
-    
-    if not status:
-        print(r.content)
     return status
 
 def check_upload_chunk(r):
     if r.status_code == 200 and r.json()['OK'] == 1:
         return True
     else:
+        print("Failed: "+r.content)
         return False
 
 
@@ -434,9 +432,8 @@ def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5
     complete_upload_url = pre_upload_data['complete']
     server_file_name = pre_upload_data['filename']
     local_file_name = video_part.path
-    chunk_generator = chunk_gen(local_file_name)
+    file_size,chunk_total_num, chunk_generator = chunk_gen(local_file_name)
 
-    file_size,chunk_total_num = next(chunk_generator)
     file_hash = hashlib.md5()
      
     with ThreadPoolExecutor(max_workers=thread_pool_workers) as tpe:
@@ -501,6 +498,12 @@ def record_info_fromjson(video_list_json):
             record_info = json.load(f)
     return record_info
 
+def record_info_dumptojson(record_info):
+    filename = record_info['filename']
+    with FileLock(filename+".lock"):
+        with open(filename, 'w') as f:
+            json.dump(record_info, f, indent=4)
+
 def upload(access_token,
            sid,
            mid,
@@ -554,7 +557,7 @@ def upload(access_token,
             for video_part in parts[post_videos_num::]:
                 print("upload {} now".format(video_part.path))
                 status = upload_video_part(access_token, sid, mid, video_part, max_retry,thread_pool_workers)
-                print("video part {} finished, status: {}".format(video_part.path, status))
+                print("video part {} finished, status: {}".format(video_part.path, status), flush=True)
                 if not status:
                     print("upload failed")
                     return None, None
@@ -639,6 +642,15 @@ def upload(access_token,
     print(r.content.decode())
 
     data = r.json()["data"]
+
+    if video_list_json != '':
+        record_info = record_info_fromjson(video_list_json)
+        if r.json()["code"] == 0:
+            record_info['Uploading'] = 'Finished'
+        else:
+            record_info['Uploading'] = 'Failed'
+        record_info_dumptojson(record_info)
+    
     return data["aid"], data["bvid"]
 
 

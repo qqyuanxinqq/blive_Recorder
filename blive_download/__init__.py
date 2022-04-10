@@ -1,1 +1,1 @@
-from .record import Recorder
+from .record import Recorder, App

@@ -1,4 +1,5 @@
 from time import sleep
+import logging
 
 class Retry:
     def __init__(self, max_retry, check_func = lambda x: x):
@@ -20,6 +21,7 @@ class Retry:
                     break
             except Exception as e:
                 # return_value = not self.success_return_value
+                logging.exception(e)
                 print("Exceptions in trial {}/{} :".format(i+1,self.max_retry), e)
                 sleep(120)
 

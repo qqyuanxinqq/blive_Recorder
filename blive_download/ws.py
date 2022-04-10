@@ -1,10 +1,12 @@
 import json
-import websocket
+import logging
+# from sqlite3 import Timestamp
 import zlib
-import time
 from threading import Thread
-import time,datetime
+import time, datetime
 import os
+
+import websocket
 
 def get_json(recv):      #process the received bytes element
     if len(recv)==16:
@@ -29,6 +31,7 @@ def get_json(recv):      #process the received bytes element
                 rtn.append(json.loads(temp[16+i-1:]))
                 return rtn
             except Exception as e:
+                logging.exception(e)
                 print("ERROR")
                 print (e)
                 print(recv)
@@ -60,15 +63,19 @@ def danmu_to_ass(live_info):
 
         else:
             for j in get_json(message):
-                #print(j)
+                # print(j)
                 if j.get('cmd')=='DANMU_MSG':
                     danmu = j.get('info')[1]
                     username = j.get('info')[2][1]
                     color_d=j.get('info')[0][3] #RGB in decimal
                     color_h="{:X}".format(color_d) #RGB in Hexadecimal
+                    # print(datetime.datetime.now()- datetime.datetime.fromtimestamp(j.get('info')[0][4]/1000))
+                    danmu_start = datetime.datetime.fromtimestamp(j.get('info')[0][4]/1000)-video_info.time_create
+                    # danmu_start = datetime.datetime.now()-video_info.time_create
+                    
+                    
                     #danmu_l=(len(danmu.encode('gbk')))*25/2     #Size of each chinese character is 25, english character considered to be half, 768 is the X size from the .ass file
                     danmu_l=len(danmu)*25
-                    danmu_start = datetime.datetime.now()-video_info.time_create
                     danmu_end = danmu_start + datetime.timedelta(seconds=10)
                     #Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     #Moving danmu: \move(<Start_x1>,<Start_y1>,<End_x2>,<End_y2>)
@@ -98,6 +105,49 @@ def danmu_to_ass(live_info):
                     if os.path.exists(video_info.ass_name) == True:
                         with open(video_info.ass_name,"a",encoding='UTF-8') as f:
                             f.write(ass_line)
+                elif j.get('cmd').find("SUPER_CHAT") != -1:
+                    try:
+                        danmu = "SC:"+j["data"]["message"]
+                        username = j["data"]["user_info"]["uname"]
+                        color_h= j["data"]["background_price_color"]          #RGB in Hexadecimal
+                        timestamp_start = j["data"]["start_time"]
+                        timestamp_end = j["data"]["end_time"]
+
+
+                        danmu_l=len(danmu)*25
+                        danmu_start = datetime.datetime.fromtimestamp(timestamp_start)-video_info.time_create
+                        danmu_end = datetime.datetime.fromtimestamp(timestamp_end)-video_info.time_create
+                        #Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+                        #Moving danmu: \move(<Start_x1>,<Start_y1>,<End_x2>,<End_y2>)
+                        X1 = 768 + danmu_l / 2
+                        X2 = 0 - danmu_l / 2
+                        for i in range(len(end_time_lst)+1):
+                            #print(i)
+                            if i == len(end_time_lst):
+                                Y=i*25
+                                end_time_lst.append(danmu_end)
+                                break
+                            if (768 + danmu_l) / 10 * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) >  768: 
+                                continue
+                            else:
+                                Y=i*25
+                                end_time_lst[i] = danmu_end
+                                break
+                        move = "\\pos({},{})".format(384, Y)+"\\c&H{}".format(''.join([color_h[4:6],color_h[2:4],color_h[0:2]]))
+                        ass_line="Dialogue: 0,{},{},R2L,{},20,20,2,,{{ {} }}{} \n".format(ass_time(danmu_start), 
+                                                                        ass_time(danmu_end),
+                                                                        username,
+                                                                        move,
+                                                                        danmu)
+                        live_info.num_danmu_total += 1
+                        # print(danmu)
+                        # print(video_info.ass_name)
+                        if os.path.exists(video_info.ass_name) == True:
+                            with open(video_info.ass_name,"a",encoding='UTF-8') as f:
+                                f.write(ass_line)
+                    except Exception as e:
+                        logging.exception(e)
+                        
     return on_message
 
 
