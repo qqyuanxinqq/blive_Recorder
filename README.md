@@ -45,7 +45,8 @@ nohup python3 main.py UP_NAME &
 ## 今后计划
 近期有空都会试着更新，不过个人能力很有限，有些实现可能也比较奇怪，希望大佬们多指教。
 
-
+- Reorgnize the class in record.py, to meet LoD. 
+- Reorgnize the class in record.py, to meet DIP. 
 - 录制、上传功能的模块化，定向输出日志，重新封装uploader
 - Windows 命令行的支持和测试， 改用process
 - 不同的分P条件 （固定时长分P）

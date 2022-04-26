@@ -392,7 +392,7 @@ def check_upload_chunk(r):
     if r.status_code == 200 and r.json()['OK'] == 1:
         return True
     else:
-        print("Failed: "+r.content)
+        print("Failed: "+r.content.decode())
         return False
 
 
@@ -465,7 +465,7 @@ def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5
 
             for t in done:
                 if not t.result():
-                    print("upload failed in upload_video_part")
+                    print("upload failed in upload_video_part for: ", local_file_name)
                     return False
             # print(t_list)
         
@@ -547,6 +547,8 @@ def upload(access_token,
     """
     if not isinstance(parts, list):
         parts = [parts]
+    
+    dynamic_update = bool(video_list_json)
 
     status = True
     post_videos_num = 0
@@ -563,26 +565,26 @@ def upload(access_token,
                     return None, None
             post_videos_num = len(parts)
         
-        if video_list_json == '':
+        if not dynamic_update:
             print("No dynamic record_info json file provided, stop waiting for new videos.")
             break
-        # else:
-        #     print("Trakcing provided record_info json file.")
-        sleep(40)
-        sys.stdout.flush()
-        record_info = record_info_fromjson(video_list_json)
-        directory = record_info.get('directory')
-        file_list=record_info.get('videolist')
-        for item in file_list[post_videos_num::]:
-            parts.append(VideoPart(
-                path=os.path.join(directory, item),
-                title = item.split('.')[0]
-            ))
-        if record_info.get("Status", "Done") == "Living":
-            print("The live is still on, waiting for new videos.")
         else:
-            print("The live is done, stop waiting for new videos.")
-            video_list_json = ''
+        #     print("Trakcing provided record_info json file.")
+            sleep(40)
+            sys.stdout.flush()
+            record_info = record_info_fromjson(video_list_json)
+            directory = record_info.get('directory')
+            file_list=record_info.get('videolist')
+            for item in file_list[post_videos_num::]:
+                parts.append(VideoPart(
+                    path=os.path.join(directory, item),
+                    title = item.split('.')[0]
+                ))
+            if record_info.get("Status", "Done") == "Living":
+                print("The live is still on, waiting for new videos.")
+            else:
+                print("The live is done, stop waiting for new videos.")
+                dynamic_update = False
 
     # cover
     if os.path.isfile(cover):

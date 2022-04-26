@@ -21,7 +21,7 @@ class Retry:
                     break
             except Exception as e:
                 # return_value = not self.success_return_value
-                logging.exception(e)
+                # logging.exception(e)
                 print("Exceptions in trial {}/{} :".format(i+1,self.max_retry), e)
                 sleep(120)
 

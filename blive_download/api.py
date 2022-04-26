@@ -17,7 +17,7 @@ def my_request(url):
             res = urllib.request.urlopen(req, timeout=10) # type: ignore
             break
         except urllib.error.URLError as e: # type: ignore
-            logging.exception(e)
+            # logging.exception(e)
             print("During retry" , retry_num , "=============================")
             print(e)
             print("=============================")

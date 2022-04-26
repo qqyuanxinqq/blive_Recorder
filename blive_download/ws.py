@@ -105,11 +105,12 @@ def danmu_to_ass(live_info):
                     if os.path.exists(video_info.ass_name) == True:
                         with open(video_info.ass_name,"a",encoding='UTF-8') as f:
                             f.write(ass_line)
-                elif j.get('cmd').find("SUPER_CHAT") != -1:
+                elif j.get('cmd') == "SUPER_CHAT_MESSAGE":
                     try:
+                        # print(j,flush= True)
                         danmu = "SC:"+j["data"]["message"]
                         username = j["data"]["user_info"]["uname"]
-                        color_h= j["data"]["background_price_color"]          #RGB in Hexadecimal
+                        color_h= j["data"]["background_bottom_color"][1:7]          #RGB in Hexadecimal
                         timestamp_start = j["data"]["start_time"]
                         timestamp_end = j["data"]["end_time"]
 

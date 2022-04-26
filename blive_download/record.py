@@ -32,7 +32,12 @@ class Myproc(Process):
         self.path = "."  
 
     def run(self):
+        time.sleep(0.1)
+        print("===========Myproc==========")
+        print("Process ", self.name, "has started.")
         print("Process spawned at PID: ",os.getpid(),flush=True)
+        print("===========================")
+        time.sleep(0.1)
         with open(self.logfile, "w") as f:
             sys.stdout = f
             sys.stderr = f
@@ -46,6 +51,7 @@ class Myproc(Process):
     def _post_run(self):
         self.join()
         print("===========Myproc==========")
+        print(datetime.datetime.now())
         print("Process ", self.name, "has terminated, exit code: ", self.exitcode)
     
     def post_run(self):
@@ -191,7 +197,7 @@ class Recorder():
     def recording(self):
         while 1:
             while not self.check_live_status():
-                print("[%s]未开播"%self._room_id,datetime.datetime.now())
+                print("[%s]未开播"%self._room_id,datetime.datetime.now(), flush=True)
                 time.sleep(35)
 
             #Information about this live
@@ -202,12 +208,16 @@ class Recorder():
                 #Record this live
                 ws = self.ws_setup()
                 while self.check_live_status() == True:                   
-                    
                     real_url,headers = self.get_stream_url()
                     if real_url == None:
                         print("开播了但是没有源")
                         time.sleep(5)
                         continue
+
+                    #Init upload process  
+                    if self._upload == 1 and self.live.record_info['Uploading'] == 'No':
+                        self.live.record_info['Uploading'] = 'Yes'
+                        self.upload(self.live.record_info)
 
                     #New video starts
                     self.live.init_video()
@@ -218,35 +228,36 @@ class Recorder():
                         ws = self.ws_setup()
 
                     rtncode, recorded = record(real_url, self.live.curr_video.videoname, headers, self.div_size)
-                    print("Total number of danmu so far is : ", self.live.num_danmu_total)
+                    print("Total number of danmu so far is : ", self.live.num_danmu_total, datetime.datetime.now())
 
                     #Current video ends
                     if recorded:
                         #Modify recorded video and dump updated record_info
                         self.live.dump_record_info()
-                        t_post_record = Thread(target=self.post_record, args=(self.live.curr_video.videoname, self.live.append_curr_video))
+                        t_post_record = Thread(target=self.post_record, args=(self.live.curr_video.videoname, self.live.append_curr_video), name=self.live.curr_video.videoname)
                         t_post_record.start()
                         threads.append(t_post_record)
+                    else:
+                        print("record failed on {}".format(self.live.curr_video.videoname))
 
-                    #Init upload process  
-                    if self.live.record_info['Uploading'] == 'No' and self._upload == 1:
-                        self.live.record_info['Uploading'] = 'Yes'
-                        self.upload(self.live.record_info)
                 #When live ends
                 ws.close()
             except Exception as e:
                 logging.exception(e)
-
-            self.live.record_info['Status'] = "Done"
             while threads:
                 threads.pop().join()
-            self.live.dump_record_info()
             time.sleep(10)
+
+            self.live.record_info['Status'] = "Done"
+            self.live.dump_record_info()
+            print("Live Done ",datetime.datetime.now(), flush = True)
 
 
     def post_record(self, filename, callback):
         if self._flvtag_update:
-            print("==========Flvmeta============\n", flvmeta_update(filename))
+            print("==========Flvmeta============\n", filename, flush = True)
+            rtn = flvmeta_update(filename)
+            print("==========Flvmeta============\n", rtn, flush = True)
             
         callback(filename)
     
@@ -274,7 +285,7 @@ class Recorder():
             p.start()
             p.post_run()
             print("=============================")
-            print("开始上传"+record_info.get('time'))
+            print("开始上传"+record_info.get('filename'))
             print("=============================")
         else:
             print("=============================")
@@ -346,7 +357,7 @@ class Recorder():
         
         def append_curr_video(self, videoname):
             self.record_info['videolist'].append(os.path.basename(videoname))
-            print("Append video to record info")
+            print("{} appended to record info".format(videoname))
             self.dump_record_info()
 
 
@@ -373,7 +384,7 @@ def record(url, file_name,headers,divsize) -> Tuple[int,str]:
     while retry_num <5 :
         try :
             # Must add timeout, otherwise program may get stuck at read(5), where fd=5 is socket.
-            res = urllib.request.urlopen(r, timeout = 4)
+            res = urllib.request.urlopen(r, timeout = 5)
             break
         except Exception as e:
             logging.exception(e)
@@ -391,7 +402,7 @@ def record(url, file_name,headers,divsize) -> Tuple[int,str]:
         # _buffer = res.read(1024 *256)
         n = 0
         now_1=datetime.datetime.now()
-        while n<10 :
+        while n < 5:
             try:
                 _buffer = res.read(1024 * 32)
             except Exception as e:

@@ -2,6 +2,7 @@ import os
 import json
 import logging
 from filelock import FileLock
+import logging
 
 from .bilibiliuploader.bilibiliuploader import BilibiliUploader
 from .bilibiliuploader.core import VideoPart
@@ -94,6 +95,10 @@ def upload(record_info_json):
     if 'Status' not in record_info:
         print("Live status is not checked!")
     config = cfg_gen(record_info)
-
-    avid, bvid = _upload(record_info, **config)
-    print("Done! All video parts uploaded! Avid:{}, Bvid: {}".format(avid, bvid))
+    try:
+        avid, bvid = _upload(record_info, **config)
+        print("Done! All video parts uploaded! Avid:{}, Bvid: {}".format(avid, bvid), flush = True)
+    except Exception as e:
+        logging.exception(e)
+        print(e)
+        print("Upload failed")
