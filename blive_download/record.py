@@ -8,17 +8,36 @@ from filelock import FileLock
 # import subprocess
 from multiprocessing import Process
 from typing import Tuple
+import logging
+import signal
 
 from .api import is_live,get_stream_url,ws_open_msg,room_id
 from .ws import danmu_ws
 from .flvmeta import flvmeta_update
-import logging
+
+from .table import add_task, clear_status, create_db, get_task, kill_task, update_task_status
         
 # from blive_upload import upload
 #This absolute path import requires root directory have "blive_upload" folder
 
 CONFIG_PATH = os.path.join("config","config.json")
 LOG_PATH = "logs"
+
+def configCheck(configpath = CONFIG_PATH, up_name="_default"):
+    if os.path.exists(configpath) == False:
+        print("请确认配置文件{}存在，并填写相关配置内容".format(configpath))
+        raise Exception("config file error!")
+    conf = json.load(open(configpath))
+    if conf.get(up_name,0) == 0:
+        print("请确认该配置文件中存在与%s相匹配的信息"%up_name)
+        raise Exception("config file error!")
+    if conf[up_name].get("_name",0) != up_name:
+        print("请确认该配置文件中_name项的信息与%s相匹配"%up_name)
+        raise Exception("config file error!")
+    if not conf["_default"].get("Database",0):
+        print("请确认已提供database的目录")
+        raise Exception("config file error!")
+    return conf
 
 class Myproc(Process):
     def __init__(self, group=None, target=None, name=None, args=(), kwargs={},
@@ -66,66 +85,104 @@ class Myproc(Process):
 
 class App():
     def __init__(self, upload_func):
-        def run_recorder(up_name, upload_func):
-            recorder = Recorder(up_name, upload_func)
-            recorder.recording()
+        self.upload_func = upload_func
         
         self.time_create = datetime.datetime.now()
         self.recorders = {}
 
-        conf = self.configCheck(CONFIG_PATH)
+        conf = configCheck(CONFIG_PATH)
+        self.database = conf["_default"].get("Database")
+
         os.makedirs(LOG_PATH, exist_ok = True)
-        
+
+
+    def run(self):
+ 
+        '''
+        should_running >= self.recorders/is_running >= Processes
+        First, add tasks into the db
+        while:
+            Check_task (two sets), and start_p
+            check_p, mark task
+            
+            kill_p 
+            check_p, mark task
+        '''       
+        if self.database:
+            self.engine = create_db(self.database)
+        else:
+            raise Exception("Please provide valid database directory!!!")
+
+        conf = configCheck(CONFIG_PATH)
         if conf["_default"]["Enabled_recorder"]:
             recorder_enabled = conf["_default"]["Enabled_recorder"]
         else:
             recorder_enabled = conf.keys()
         
-        for up_name in conf.keys():
-            if up_name == "_default" or up_name not in recorder_enabled:
-                continue
-            p = Myproc(target = run_recorder, args=(up_name, upload_func), name = "[{}]Recorder".format(up_name))
-            logfile = os.path.join(LOG_PATH, conf[up_name]["_name"]+ self.time_create.strftime("_%Y%m%d_%H-%M-%S") + '.log')
-            p.set_output(logfile)
-            self.recorders[up_name] = p
-            # print("[%s]Recorder set"%up_name,datetime.datetime.now(), flush=True)
         
-        # with open("logs.txt","a",encoding='UTF-8') as f:
-        #     logs = now.strftime("_%Y%m%d_%H%M%S" + up_name + "\n")
-        #     f.write(logs)
+        try:
+            for up_name in conf.keys():
+                if up_name == "_default" or up_name not in recorder_enabled:
+                    continue
+                add_task(self.engine, up_name)
 
-    def run(self):
-        for up_name, p in self.recorders.items():
-            p.start()
-            p.post_run()
-            print("[%s]Recorder loaded"%up_name,datetime.datetime.now(), flush=True)
-            time.sleep(0.1)
-            # print(p.daemon)
-        while True:
-            stopped = []
+            while True:
+                should_run_set = set([i.nickname for i in get_task(self.engine) if i.should_running == True])
+                for up_name in should_run_set - self.recorders.keys():
+                    p = Myproc(target = self.run_recorder, args=(up_name, self.upload_func), name = "[{}]Recorder".format(up_name))
+                    logfile = os.path.join(LOG_PATH, conf[up_name]["_name"]+ self.time_create.strftime("_%Y%m%d_%H-%M-%S") + '.log')
+                    p.set_output(logfile)
+                    
+                    self.recorders[up_name] = p
+                    update_task_status(self.engine, up_name, True)  #Operation on is_running is always paired with self.recorders
+                    
+                    p.start()
+                    p.post_run()
+                    print("[%s]Recorder loaded"%up_name,datetime.datetime.now(), flush=True)
+                    time.sleep(0.1)
+                    # print("[%s]Recorder set"%up_name,datetime.datetime.now(), flush=True)
+                    
+                for up_name in self.recorders.keys() - should_run_set:
+                    os.kill(self.recorders[up_name].pid, signal.SIGINT)
+
+                stopped = []
+                for up_name, p in self.recorders.items():
+                    if not p.is_alive():
+                        print(datetime.datetime.now(),":")
+                        print("{} has stopped!".format(p.name))
+                        sys.stdout.flush()
+                        stopped.append(up_name)
+                while stopped:
+                    up_name = stopped.pop()
+                    self.recorders[up_name].close()
+
+                    self.recorders.pop(up_name)
+                    update_task_status(self.engine, up_name, True)  #Operation on is_running is always paired with self.recorders
+
+                    kill_task(self.engine, up_name)   #Avoid keep restarting the dead process. 
+
+                time.sleep(30)
+        finally:
             for up_name, p in self.recorders.items():
-                if not p.is_alive():
-                    print(datetime.datetime.now(),":")
-                    print("{} has stopped!".format(p.name))
-                    sys.stdout.flush()
-                    stopped.append(up_name)
-            while stopped:
-                self.recorders.pop(stopped.pop())
+                os.kill(p.pid, signal.SIGINT)
+            clear_status(self.engine)
+            print("Exit Successfully!")
 
-            time.sleep(30)
 
-    def configCheck(self, configpath, up_name="_default"):
-        if os.path.exists(configpath) == False:
-            print("请确认配置文件{}存在，并填写相关配置内容".format(configpath))
-            raise Exception("config file error!")
-        conf = json.load(open(configpath))
-        if conf.get(up_name,0) == 0:
-            print("请确认该配置文件中存在与%s相匹配的信息"%up_name)
-            raise Exception("config file error!")
-        if conf[up_name].get("_name",0) != up_name:
-            print("请确认该配置文件中_name项的信息与%s相匹配"%up_name)
-            raise Exception("config file error!")
-        return conf
+    
+    def handle_stopped(self, up_name):
+        self.recorders.pop(up_name)
+
+    def start_p(self, up_name):
+        pass
+
+    def kill_p(self, up_name):
+        pass
+
+    @staticmethod
+    def run_recorder(up_name, upload_func):
+        recorder = Recorder(up_name, upload_func)
+        recorder.recording()
 
 class Recorder():
     def __init__(self, up_name, upload_func =None):
@@ -140,14 +197,14 @@ class Recorder():
         # self._path = ""
         self.upload_func = upload_func
                 
-        default_conf = self.configCheck(CONFIG_PATH)["_default"]
+        default_conf = configCheck(CONFIG_PATH)["_default"]
         self._room_id = default_conf["_room_id"]
         self._div_size_gb = default_conf["_div_size_gb"]
         self._flvtag_update = default_conf["_flvtag_update"]
         self._upload = default_conf["_upload"]
         self._path = default_conf["_path"]
         
-        conf = self.configCheck(CONFIG_PATH, up_name)[self.up_name]
+        conf = configCheck(CONFIG_PATH, up_name)[self.up_name]
         for key in conf:
             setattr(self, key, conf[key])
 
@@ -164,19 +221,6 @@ class Recorder():
 
         self.live_status = False
         print("[%s]Recorder loaded"%self.up_name,datetime.datetime.now(), flush=True)
-    
-    def configCheck(self, configpath, up_name="_default"):
-        if os.path.exists(configpath) == False:
-            print("请确认配置文件{}存在，并填写相关配置内容".format(configpath))
-            raise Exception("config file error!")
-        conf = json.load(open(configpath))
-        if conf.get(up_name,0) == 0:
-            print("请确认该配置文件中存在与%s相匹配的信息"%up_name)
-            raise Exception("config file error!")
-        if conf[up_name].get("_name",0) != up_name:
-            print("请确认该配置文件中_name项的信息与%s相匹配"%up_name)
-            raise Exception("config file error!")
-        return conf
 
     def check_live_status(self):
         try:
@@ -195,62 +239,65 @@ class Recorder():
         return real_url,headers
         
     def recording(self):
-        while 1:
-            while not self.check_live_status():
-                print("[%s]未开播"%self._room_id,datetime.datetime.now(), flush=True)
-                time.sleep(35)
+        try: 
+            while 1:
+                while not self.check_live_status():
+                    print("[%s]未开播"%self._room_id,datetime.datetime.now(), flush=True)
+                    time.sleep(35)
 
-            #Information about this live
-            self.live = self.Live(self.up_name,self.live_dir)
-            threads = []
-            try:
+                #Information about this live
+                self.live = self.Live(self.up_name,self.live_dir)
+                threads = []
+                try:
+                    self.live.dump_record_info()
+                    #Record this live
+                    ws = self.ws_setup()
+                    while self.check_live_status() == True:                   
+                        real_url,headers = self.get_stream_url()
+                        if real_url == None:
+                            print("开播了但是没有源")
+                            time.sleep(5)
+                            continue
+
+                        #Init upload process  
+                        if self._upload == 1 and self.live.record_info['Uploading'] == 'No':
+                            self.live.record_info['Uploading'] = 'Yes'
+                            self.upload(self.live.record_info)
+
+                        #New video starts
+                        self.live.init_video()
+                        ass_gen(self.live.curr_video.ass_name,"head.ass") 
+                        
+                        if not self.ws_thread.is_alive():
+                            print("WS has been terminated somehow!!!!")
+                            ws = self.ws_setup()
+
+                        rtncode, recorded = record(real_url, self.live.curr_video.videoname, headers, self.div_size)
+                        print("Total number of danmu so far is : ", self.live.num_danmu_total, datetime.datetime.now())
+
+                        #Current video ends
+                        if recorded:
+                            #Modify recorded video and dump updated record_info
+                            self.live.dump_record_info()
+                            t_post_record = Thread(target=self.post_record, args=(self.live.curr_video.videoname, self.live.append_curr_video), name=self.live.curr_video.videoname)
+                            t_post_record.start()
+                            threads.append(t_post_record)
+                        else:
+                            print("record failed on {}".format(self.live.curr_video.videoname))
+
+                    #When live ends
+                    ws.close()
+                except Exception as e:
+                    logging.exception(e)
+                while threads:
+                    threads.pop().join()
+                time.sleep(10)
+
+                self.live.record_info['Status'] = "Done"
                 self.live.dump_record_info()
-                #Record this live
-                ws = self.ws_setup()
-                while self.check_live_status() == True:                   
-                    real_url,headers = self.get_stream_url()
-                    if real_url == None:
-                        print("开播了但是没有源")
-                        time.sleep(5)
-                        continue
-
-                    #Init upload process  
-                    if self._upload == 1 and self.live.record_info['Uploading'] == 'No':
-                        self.live.record_info['Uploading'] = 'Yes'
-                        self.upload(self.live.record_info)
-
-                    #New video starts
-                    self.live.init_video()
-                    ass_gen(self.live.curr_video.ass_name,"head.ass") 
-                    
-                    if not self.ws_thread.is_alive():
-                        print("WS has been terminated somehow!!!!")
-                        ws = self.ws_setup()
-
-                    rtncode, recorded = record(real_url, self.live.curr_video.videoname, headers, self.div_size)
-                    print("Total number of danmu so far is : ", self.live.num_danmu_total, datetime.datetime.now())
-
-                    #Current video ends
-                    if recorded:
-                        #Modify recorded video and dump updated record_info
-                        self.live.dump_record_info()
-                        t_post_record = Thread(target=self.post_record, args=(self.live.curr_video.videoname, self.live.append_curr_video), name=self.live.curr_video.videoname)
-                        t_post_record.start()
-                        threads.append(t_post_record)
-                    else:
-                        print("record failed on {}".format(self.live.curr_video.videoname))
-
-                #When live ends
-                ws.close()
-            except Exception as e:
-                logging.exception(e)
-            while threads:
-                threads.pop().join()
-            time.sleep(10)
-
-            self.live.record_info['Status'] = "Done"
-            self.live.dump_record_info()
-            print("Live Done ",datetime.datetime.now(), flush = True)
+                print("Live Done ",datetime.datetime.now(), flush = True)
+        finally:
+            print("Terminated Gracefully!")
 
 
     def post_record(self, filename, callback):

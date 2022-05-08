@@ -1,6 +1,7 @@
 {
     "_default": {
         "Enabled_recorder": ["kaofish","xiaotudou"],
+        "Database": "recording_db.db",
         "_name": "_default",
         "_room_id": "",
         "_div_size_gb": "1",

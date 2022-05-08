@@ -1,5 +1,6 @@
+from typing import Set
 from sqlalchemy import ForeignKey, Column, Integer, String, Boolean
-from sqlalchemy import create_engine
+
 
 from sqlalchemy.orm import registry
 mapper_registry = registry()
@@ -14,12 +15,12 @@ class UP_DB(Base):
     
     is_running = Column(Boolean, default = False)
     should_running = Column(Boolean, default = False)
-    is_live = Column(Boolean, nullable=False)
+    is_live = Column(Boolean, nullable=False, default = False)
 
 class Live_DB(Base):
     __tablename__ = 'Live'
     live_id = Column(Integer, primary_key=True)
-    nickname = Column(String, ForeignKey("Up_name.nickname"), nullable=False)
+    nickname = Column(String, nullable=False)
     room_id = Column(Integer, nullable=False)
     start_time = Column(Integer, nullable=False)
     end_time = Column(Integer)
@@ -33,6 +34,7 @@ class Video_DB(Base):
     end_time = Column(Integer)
     size = Column(Integer)
     is_live = Column(Boolean, nullable=False)
+    is_stored = Column(Boolean, nullable=False)
 
     # https://zhuanlan.zhihu.com/p/37874066
 class Danmu_DB(Base):
@@ -62,14 +64,75 @@ class Log_DB(Base):
     type = Column(String, nullable=False)
     content = Column(String, nullable=False)
 
-def create_db(target):
-    engine = create_engine("sqlite+pysqlite:///{}".format(target), echo=True, future=True)
+def drop_table(table, engine):
+    table.drop(engine)
+
+def clear_status(engine):
+    drop_table(UP_DB.__table__, engine)
+
+from sqlalchemy import create_engine
+def create_db(target:str):
+    engine = create_engine("sqlite+pysqlite:///{}".format(target), future=True)
     mapper_registry.metadata.create_all(engine)
     return engine
 
 
-def add_task():
-    pass
+from time import time
+from typing import List
 
-def kill_task():
-    pass
+from sqlalchemy import select, update
+from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.orm import Session
+
+def get_task(engine) -> List:
+    '''
+    Input engine object of database
+    Output list of UP_DB objects in 'Up_name' table
+    '''
+    with Session(engine) as session:
+        result = session.execute(
+            select(UP_DB)
+            )
+        rtn=[row[0] for row in result]
+    return rtn
+
+def add_task(engine, nickname: str) -> str:
+
+    '''
+    Input: engine object of database, and nickname
+    Return: nickname if success
+    '''
+    with engine.begin() as conn:
+        result = conn.execute(
+            insert(UP_DB.__table__). 
+            values({"nickname": nickname, "added_time":int(time()), "should_running": True}).
+            on_conflict_do_update(index_elements = ["nickname"], set_= {"added_time":int(time()), "should_running": True})
+            )
+        return result.inserted_primary_key[0]
+
+def kill_task(engine, nickname: str) -> int:
+    '''
+    Input engine object of database, and nickname
+    Return: Number of tuples been updated
+    '''
+    with engine.begin() as conn:
+        result = conn.execute(
+            update(UP_DB.__table__).  
+            where(UP_DB.__table__.c.nickname == nickname).
+            values({"should_running": False})
+            )
+        return result.rowcount
+
+def update_task_status(engine, nickname: str, is_running: bool) -> int:
+    '''
+    Input engine object of database, and nickname
+    Return: Number of tuples been updated
+    '''
+    with engine.begin() as conn:
+        result = conn.execute(
+            update(UP_DB.__table__).  
+            where(UP_DB.__table__.c.nickname == nickname).
+            values({"is_running": is_running})
+            )
+        return result.rowcount
+
