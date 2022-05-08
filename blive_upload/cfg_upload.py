@@ -67,7 +67,8 @@ def _upload(record_info, upload_args : dict, username: str = "username", passwor
         
         if rtncode != 0:
             raise Exception("username/password login fail")
-        uploader.save_login_data(file_name=login_token_file)
+        else:
+            uploader.save_login_data(file_name=login_token_file)
 
     # 处理视频文件
     parts = []
@@ -101,4 +102,5 @@ def upload(record_info_json):
     except Exception as e:
         logging.exception(e)
         print(e)
+        logging.exception(e)
         print("Upload failed")

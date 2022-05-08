@@ -5,10 +5,14 @@ import zlib
 from threading import Thread
 import time, datetime
 import os
+from collections import defaultdict
 
 import websocket
 
-def get_json(recv):      #process the received bytes element
+def get_json(recv):      
+    """
+    process the received bytes element, return json object
+    """
     if len(recv)==16:
         return []
     #print(recv[0:15]) ################################
@@ -35,8 +39,10 @@ def get_json(recv):      #process the received bytes element
                 print("ERROR")
                 print (e)
                 print(recv)
+    return []
 
-def ass_time(timedelta):    #input 'datetime.timedelta' object, return ass time formt in str
+def ass_time(timedelta):    
+    """input 'datetime.timedelta' object, return ass time formt in str"""
     h=(timedelta//datetime.timedelta(seconds=3600))%10
     m=(timedelta//datetime.timedelta(seconds=60))%60
     s=(timedelta//datetime.timedelta(seconds=1))%60
@@ -44,112 +50,106 @@ def ass_time(timedelta):    #input 'datetime.timedelta' object, return ass time 
     return "{}:{:0>2d}:{:0>2d}.{:0>2d}".format(h,m,s,sd)
 
 
-def danmu_to_ass(live_info):
-    video_info = live_info.curr_video
-    # end_time_lst = [datetime.timedelta(seconds=0)]  #(danmu_end-last_danmu_end)  speed() "Each line in the subtitle"
-    end_time_lst = video_info.danmu_end_time
-    def on_message(ws, message):
-        if message==b'\x00\x00\x00\x1a\x00\x10\x00\x01\x00\x00\x00\x08\x00\x00\x00\x01{"code":0}':
-            print("Connected")
-            return
-        elif len(message)==20:
-            print("Heartbeat confirmed")
-            return
+class Ass_Generator():
+    def __init__(self, live) -> None:
+        self.liveinfo = live
+        self.cur_video = live.curr_video
         
-        elif len(message)==35:  #HeartBeat responding message contains 人气值
-            renqi = int.from_bytes(message[16:20], 'big')
-            print("当前人气",renqi)
-            print("Heartbeat confirmed")
+    @property
+    def ass_file(self):
+        return self.cur_video.ass_name
+    @property
+    def ass_starttime(self):
+        return self.cur_video.time_create
+    @property
+    def end_time_lst(self):
+        return self.cur_video.danmu_end_time
 
-        else:
-            for j in get_json(message):
-                # print(j)
-                if j.get('cmd')=='DANMU_MSG':
-                    danmu = j.get('info')[1]
-                    username = j.get('info')[2][1]
-                    color_d=j.get('info')[0][3] #RGB in decimal
-                    color_h="{:X}".format(color_d) #RGB in Hexadecimal
-                    # print(datetime.datetime.now()- datetime.datetime.fromtimestamp(j.get('info')[0][4]/1000))
-                    danmu_start = datetime.datetime.fromtimestamp(j.get('info')[0][4]/1000)-video_info.time_create
-                    # danmu_start = datetime.datetime.now()-video_info.time_create
-                    
-                    
-                    #danmu_l=(len(danmu.encode('gbk')))*25/2     #Size of each chinese character is 25, english character considered to be half, 768 is the X size from the .ass file
-                    danmu_l=len(danmu)*25
-                    danmu_end = danmu_start + datetime.timedelta(seconds=10)
-                    #Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-                    #Moving danmu: \move(<Start_x1>,<Start_y1>,<End_x2>,<End_y2>)
-                    X1 = 768 + danmu_l / 2
-                    X2 = 0 - danmu_l / 2
-                    for i in range(len(end_time_lst)+1):
-                        #print(i)
-                        if i == len(end_time_lst):
-                            Y=i*25
-                            end_time_lst.append(danmu_end)
-                            break
-                        if (768 + danmu_l) / 10 * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) >  768: 
-                            continue
-                        else:
-                            Y=i*25
-                            end_time_lst[i] = danmu_end
-                            break
-                    move = "\\move({},{},{},{})".format(X1, Y, X2, Y)+"\\c&H{}".format(''.join([color_h[4:6],color_h[2:4],color_h[0:2]]))
-                    ass_line="Dialogue: 0,{},{},R2L,{},20,20,2,,{{ {} }}{} \n".format(ass_time(danmu_start), 
-                                                                    ass_time(danmu_end),
-                                                                    username,
-                                                                    move,
-                                                                    danmu)
-                    live_info.num_danmu_total += 1
-                    # print(danmu)
-                    # print(video_info.ass_name)
-                    if os.path.exists(video_info.ass_name) == True:
-                        with open(video_info.ass_name,"a",encoding='UTF-8') as f:
-                            f.write(ass_line)
-                elif j.get('cmd') == "SUPER_CHAT_MESSAGE":
-                    try:
-                        # print(j,flush= True)
-                        danmu = "SC:"+j["data"]["message"]
-                        username = j["data"]["user_info"]["uname"]
-                        color_h= j["data"]["background_bottom_color"][1:7]          #RGB in Hexadecimal
-                        timestamp_start = j["data"]["start_time"]
-                        timestamp_end = j["data"]["end_time"]
+    def danmu_handler(self,j):
+        """Input json object, output string in ass format"""
+        ass_line = self._danmu_to_ass_line(j,self.end_time_lst,self.ass_starttime)
+        self.ass_write(ass_line)
+    
+    def SC_handler(self,j):
+        """Input json object, output string in ass format"""
+        ass_line = self._SC_to_ass_line(j,self.end_time_lst,self.ass_starttime)
+        self.ass_write(ass_line)
 
+    def ass_write(self, ass_line):
+        if os.path.exists(self.ass_file):
+            with open(self.ass_file,"a",encoding='UTF-8') as f:
+                f.write(ass_line)
 
-                        danmu_l=len(danmu)*25
-                        danmu_start = datetime.datetime.fromtimestamp(timestamp_start)-video_info.time_create
-                        danmu_end = datetime.datetime.fromtimestamp(timestamp_end)-video_info.time_create
-                        #Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-                        #Moving danmu: \move(<Start_x1>,<Start_y1>,<End_x2>,<End_y2>)
-                        X1 = 768 + danmu_l / 2
-                        X2 = 0 - danmu_l / 2
-                        for i in range(len(end_time_lst)+1):
-                            #print(i)
-                            if i == len(end_time_lst):
-                                Y=i*25
-                                end_time_lst.append(danmu_end)
-                                break
-                            if (768 + danmu_l) / 10 * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) >  768: 
-                                continue
-                            else:
-                                Y=i*25
-                                end_time_lst[i] = danmu_end
-                                break
-                        move = "\\pos({},{})".format(384, Y)+"\\c&H{}".format(''.join([color_h[4:6],color_h[2:4],color_h[0:2]]))
-                        ass_line="Dialogue: 0,{},{},R2L,{},20,20,2,,{{ {} }}{} \n".format(ass_time(danmu_start), 
-                                                                        ass_time(danmu_end),
-                                                                        username,
-                                                                        move,
-                                                                        danmu)
-                        live_info.num_danmu_total += 1
-                        # print(danmu)
-                        # print(video_info.ass_name)
-                        if os.path.exists(video_info.ass_name) == True:
-                            with open(video_info.ass_name,"a",encoding='UTF-8') as f:
-                                f.write(ass_line)
-                    except Exception as e:
-                        logging.exception(e)
-                        
-    return on_message
+    @staticmethod
+    def _SC_to_ass_line(j, end_time_lst, starttime):
+        danmu = "SC:"+j["data"]["message"]
+        username = j["data"]["user_info"]["uname"]
+        color_h= j["data"]["background_bottom_color"][1:7]          #RGB in Hexadecimal
+        timestamp_start = j["data"]["start_time"]
+        timestamp_end = j["data"]["end_time"]
+
+        danmu_l=len(danmu)*25
+        danmu_start = datetime.datetime.fromtimestamp(timestamp_start)-starttime
+        danmu_end = datetime.datetime.fromtimestamp(timestamp_end)-starttime
+        #Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+        #Moving danmu: \move(<Start_x1>,<Start_y1>,<End_x2>,<End_y2>)
+        Y = 0
+        # X1 = 768 + danmu_l / 2
+        # X2 = 0 - danmu_l / 2
+        for i in range(len(end_time_lst)+1):
+            #print(i)
+            if i == len(end_time_lst):
+                Y=i*25
+                end_time_lst.append(danmu_end)
+                break
+            if (768 + danmu_l) / 10 * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) >  768: 
+                continue
+            else:
+                Y=i*25
+                end_time_lst[i] = danmu_end
+                break
+        move = "\\pos({},{})".format(384, Y)+"\\c&H{}".format(''.join([color_h[4:6],color_h[2:4],color_h[0:2]]))
+        ass_line="Dialogue: 0,{},{},R2L,{},20,20,2,,{{ {} }}{} \n".format(ass_time(danmu_start), 
+                                                        ass_time(danmu_end),
+                                                        username,
+                                                        move,
+                                                        danmu)
+        return ass_line
+    @staticmethod
+    def _danmu_to_ass_line(j, end_time_lst, starttime):
+        """Input json object and parameters for single msg, output string in ass format"""
+        danmu = j.get('info')[1]
+        username = j.get('info')[2][1]
+        color_d=j.get('info')[0][3] #RGB in decimal
+        color_h="{:X}".format(color_d) #RGB in Hexadecimal
+        danmu_start = datetime.datetime.fromtimestamp(j.get('info')[0][4]/1000)-starttime
+        
+        danmu_l=len(danmu)*25   #Size of each chinese character is 25, english character considered to be half, 768 is the X size from the .ass file
+        danmu_end = danmu_start + datetime.timedelta(seconds=10)
+        #Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+        #Moving danmu: \move(<Start_x1>,<Start_y1>,<End_x2>,<End_y2>)
+        X1 = 768 + danmu_l / 2
+        X2 = 0 - danmu_l / 2
+        Y = 0
+        for i in range(len(end_time_lst)+1):
+            #print(i)
+            if i == len(end_time_lst):
+                Y=i*25
+                end_time_lst.append(danmu_end)
+                break
+            if (768 + danmu_l) / 10 * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) >  768: 
+                continue
+            else:
+                Y=i*25
+                end_time_lst[i] = danmu_end
+                break
+        move = "\\move({},{},{},{})".format(X1, Y, X2, Y)+"\\c&H{}".format(''.join([color_h[4:6],color_h[2:4],color_h[0:2]]))
+        ass_line="Dialogue: 0,{},{},R2L,{},20,20,2,,{{ {} }}{} \n".format(ass_time(danmu_start), 
+                                                        ass_time(danmu_end),
+                                                        username,
+                                                        move,
+                                                        danmu)
+        return ass_line
 
 
 def on_error(ws, error):
@@ -177,10 +177,76 @@ def on_open_gen(opening_msg):  #generating on_open function with differnt openin
         ws.t_sendheartbeat.start()
     return on_open
 
+
+class Message_Handler():
+    def __init__(self) -> None:
+        self.handlers = defaultdict(list)
+        self.cmd_list = []
+
+    def handle(self, j) -> None:
+        '''Input json object, handle it using the corresponding handlers'''
+        if j.get('cmd') not in self.cmd_list:
+            self.cmd_list.append(j.get('cmd'))
+            print(j)
+        
+        if j.get('cmd') in self.handlers:
+            for handler in self.handlers[j.get('cmd')]:
+                try:
+                    handler(j)
+                except Exception as e:
+                    logging.exception(e)
+        elif j.get('cmd') == None:
+            print(j)
+
+    def set_handler(self, message_type):
+        """Decorator generator"""
+        def _(handler):
+            self.handlers[message_type].append(handler)
+        return _
+
+
+def on_message_gen(message_handler):
+    # video_info = live_info.curr_video
+    # end_time_lst = [datetime.timedelta(seconds=0)]  #(danmu_end-last_danmu_end)  speed() "Each line in the subtitle"
+    # end_time_lst = video_info.danmu_end_time
+    def on_message(ws, message):
+        if message==b'\x00\x00\x00\x1a\x00\x10\x00\x01\x00\x00\x00\x08\x00\x00\x00\x01{"code":0}':
+            print("Connected")
+            return
+        elif len(message)==20:
+            print("Heartbeat confirmed")
+            return
+        
+        elif len(message)==35:  #HeartBeat responding message contains 人气值
+            renqi = int.from_bytes(message[16:20], 'big')
+            print("当前人气",renqi)
+            print("Heartbeat confirmed")
+
+        else:
+            for j in get_json(message):
+                message_handler.handle(j)
+                        
+    return on_message
+
+class Danmu_Counter():
+    def __init__(self,live_info) -> None:
+        self.live_info = live_info
+    def count(self,j):
+        self.live_info.num_danmu_total += 1
+    
+
 def danmu_ws(opening,live_info):
-    ws = websocket.WebSocketApp("wss://tx-live-dmcmt-sv-01.chat.bilibili.com/sub",
-                              on_message = danmu_to_ass(live_info),
+    message_handler = Message_Handler()
+
+    ass_handler = Ass_Generator(live_info)
+    message_handler.set_handler('DANMU_MSG')(ass_handler.danmu_handler)
+    message_handler.set_handler('SUPER_CHAT_MESSAGE')(ass_handler.SC_handler)
+    
+    message_handler.set_handler('DANMU_MSG')(Danmu_Counter(live_info).count)
+   
+    ws = websocket.WebSocketApp("wss://broadcastlv.chat.bilibili.com/sub",
+                              on_message = on_message_gen(message_handler),
                                on_error=on_error,
                                on_close=on_close)
-    ws.on_open = on_open_gen(opening)
+    ws.on_open = on_open_gen(opening)  # type: ignore
     return ws

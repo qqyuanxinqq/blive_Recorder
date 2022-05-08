@@ -1,5 +1,6 @@
 import subprocess
 import os.path
+import logging
 
 def flvmeta(input, options="", output = ""):
     '''
@@ -15,12 +16,15 @@ def flvmeta(input, options="", output = ""):
     for i in (*options.split(" "), input, output):
         if i:
             cmd.append(i)
-    rtn = subprocess.run(cmd, capture_output=True)
-    
-    if rtn.returncode:
-        return rtn.returncode,rtn.stderr.decode("utf-8")
-    else:
-        return rtn.returncode,rtn.stdout.decode("utf-8")
+    try:
+        rtn = subprocess.run(cmd, capture_output=True)
+        if rtn.returncode:
+            return rtn.returncode,rtn.stderr.decode("utf-8")
+        else:
+            return rtn.returncode,rtn.stdout.decode("utf-8")
+    except Exception as e:
+        logging.exception(e)
+        return -1,'Flvmeta binary error'
 
 def flvmeta_update(input, options = "", output = ""):
     opt = "-U"

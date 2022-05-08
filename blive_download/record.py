@@ -27,7 +27,7 @@ class Myproc(Process):
         Overwritten Process class with stdout, stderr redirection.
         """
 
-        super().__init__(group, target, name, args, kwargs, daemon=daemon)
+        super().__init__(group, target, name, args, kwargs, daemon=daemon)  # type: ignore
         self.logfile = ""
         self.path = "."  
 
@@ -42,9 +42,9 @@ class Myproc(Process):
             sys.stdout = f
             sys.stderr = f
             print("PID: ", os.getpid(),flush=True)
-            if self._target:
+            if self._target:  # type: ignore
                 try:
-                    self._target(*self._args, **self._kwargs)
+                    self._target(*self._args, **self._kwargs)  # type: ignore
                 except Exception as e:
                     logging.exception(e)
 
@@ -307,6 +307,9 @@ class Recorder():
                 self.filename = ""
                 self.videoname = ""
                 self.ass_name = ""
+
+            def get_ass_info(self):
+                return self.ass_name,self.time_create
         
         def __init__(self,up_name,live_dir):
             self.up_name = up_name
@@ -379,12 +382,12 @@ def record(url, file_name,headers,divsize) -> Tuple[int,str]:
         return -1, ""
     res = None
     retry_num = 0
-    r = urllib.request.Request(url,headers=headers)
+    r = urllib.request.Request(url,headers=headers)  # type: ignore
     # print(url)
     while retry_num <5 :
         try :
             # Must add timeout, otherwise program may get stuck at read(5), where fd=5 is socket.
-            res = urllib.request.urlopen(r, timeout = 5)
+            res = urllib.request.urlopen(r, timeout = 5)  # type: ignore
             break
         except Exception as e:
             logging.exception(e)

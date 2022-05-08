@@ -417,15 +417,16 @@ def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5
         'Accept-Encoding': 'gzip,deflate',
     }
 
-    r = requests.get(
+    status, r = Retry(max_retry=max_retry).run(
+        requests.get,
         "http://member.bilibili.com/preupload?access_key={}&mid={}&profile=ugcfr%2Fpc3".format(access_token, mid),
         headers=headers,
         cookies={
             'sid': sid
         },
         verify=False,
-        timeout = 60,
-    )
+        timeout = 60,   
+    )   
 
     pre_upload_data = r.json()
     upload_url = pre_upload_data['url']

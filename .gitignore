@@ -3,6 +3,7 @@ Videos/
 nohup.log
 nohup.out
 logs/
+test.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

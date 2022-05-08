@@ -19,10 +19,10 @@
         "_div_size_gb": "2",
         "_upload": 1
     },
-    "nohup": {
-        "_name": "nohup",
-        "_room_id": "1006",
-        "_div_size_gb": "0.05"
+    "api": {
+        "_name": "api",
+        "_room_id": "92613",
+        "_div_size_gb": "2"
     },
     "xiaofuge": {
         "_name": "xiaofuge",
