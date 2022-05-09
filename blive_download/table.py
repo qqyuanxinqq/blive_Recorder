@@ -25,6 +25,7 @@ class Live_DB(Base):
     start_time = Column(Integer, nullable=False)
     end_time = Column(Integer)
     is_live = Column(Boolean, nullable=False)
+    is_uploaded = Column(String)
 
 class Video_DB(Base):
     __tablename__ = 'Video'
@@ -35,6 +36,8 @@ class Video_DB(Base):
     size = Column(Integer)
     is_live = Column(Boolean, nullable=False)
     is_stored = Column(Boolean, nullable=False)
+    server_name = Column(String)
+
 
     # https://zhuanlan.zhihu.com/p/37874066
 class Danmu_DB(Base):

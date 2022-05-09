@@ -15,3 +15,5 @@ Some time ago, I reconstructed the websocket message handling process, but forge
 ## 05/08/2022
 Start to merge database into the recorder App. Now status of recorder App will be written into the SQLite, and the record in database can be used to control the recorder status!
 
+## 05/09/2022
+Add Flvmeta Windows binaries.
