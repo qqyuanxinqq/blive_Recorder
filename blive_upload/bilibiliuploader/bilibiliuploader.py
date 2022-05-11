@@ -9,10 +9,11 @@ class BilibiliUploader():
         self.refresh_token = None
         self.sid = None
         self.mid = None
-        
+
     def login(self, username, password):
-        code, self.access_token, self.refresh_token, self.sid, self.mid, _ = core.login(username, password)
-        if code != 0: # success
+        code, self.access_token, self.refresh_token, self.sid, self.mid, _ = core.login(
+            username, password)
+        if code != 0:  # success
             print("login fail, error code = {}".format(code))
             return -1
         return 0
@@ -42,7 +43,6 @@ class BilibiliUploader():
         finally:
             return login_data
 
-
     def upload(self,
                parts,
                copyright: int,
@@ -56,58 +56,52 @@ class BilibiliUploader():
                open_elec: int = 1,
                max_retry: int = 5,
                thread_pool_workers: int = 1,
-               video_list_json = ''):
+               video_list_json='',
+               submit_mode = 1):
         return core.upload(self.access_token,
-                    self.sid,
-                    self.mid,
-                    parts,
-                    copyright,
-                    title,
-                    tid,
-                    tag,
-                    desc,
-                    source,
-                    cover,
-                    no_reprint,
-                    open_elec,
-                    max_retry,
-                    thread_pool_workers,
-                    video_list_json)
+                           self.sid,
+                           self.mid,
+                           None,
+                           None,
+                           parts,
+                           copyright,
+                           title,
+                           tid,
+                           tag,
+                           desc,
+                           source,
+                           cover,
+                           no_reprint,
+                           open_elec,
+                           max_retry,
+                           thread_pool_workers,
+                           video_list_json,
+                           submit_mode)
 
-    def edit(self,
-             avid=None,
-             bvid=None,
-             parts=None,
-             insert_index=None,
-             copyright=None,
-             title=None,
-             tid=None,
-             tag=None,
-             desc=None,
-             source=None,
-             cover=None,
-             no_reprint=None,
-             open_elec=None,
-             max_retry: int = 5,
-             thread_pool_workers: int = 1):
-
-        if not avid and not bvid:
-            print("please provide avid or bvid")
-            return None, None
-        if not avid:
-            avid = cipher.bv2av(bvid)
-        if not isinstance(parts, list):
-            parts = [parts]
-        if type(avid) is str:
-            avid = int(avid)
-        core.edit_videos(
+    def replace_or_new(self,
+                avid=None,
+                bvid=None,
+                parts=None,
+                copyright=None,
+                title=None,
+                tid=None,
+                tag='',
+                desc='',
+                source='',
+                cover='',
+                no_reprint=None,
+                open_elec=None,
+                max_retry: int = 5,
+                thread_pool_workers: int = 1,
+                video_list_json='',
+                submit_mode = 1):
+        return core.upload(
             self.access_token,
             self.sid,
             self.mid,
             avid,
             bvid,
             parts,
-            insert_index,
             copyright,
             title,
             tid,
@@ -118,5 +112,49 @@ class BilibiliUploader():
             no_reprint,
             open_elec,
             max_retry,
-            thread_pool_workers
+            thread_pool_workers,
+            video_list_json,
+            submit_mode
+        )
+
+    def replace(self,
+                avid=None,
+                bvid=None,
+                parts=None,
+                copyright=None,
+                title=None,
+                tid=None,
+                tag='',
+                desc='',
+                source='',
+                cover='',
+                no_reprint=None,
+                open_elec=None,
+                max_retry: int = 5,
+                thread_pool_workers: int = 1,
+                video_list_json='',
+                submit_mode = 1):
+        if not avid and not bvid:
+            print("please provide avid or bvid")
+            return None, None
+        return core.upload(
+            self.access_token,
+            self.sid,
+            self.mid,
+            avid,
+            bvid,
+            parts,
+            copyright,
+            title,
+            tid,
+            tag,
+            desc,
+            source,
+            cover,
+            no_reprint,
+            open_elec,
+            max_retry,
+            thread_pool_workers,
+            video_list_json,
+            submit_mode
         )

@@ -23,7 +23,8 @@
     "api": {
         "_name": "api",
         "_room_id": "92613",
-        "_div_size_gb": "2"
+        "_div_size_gb": "2",
+        "_upload": 1
     },
     "xiaofuge": {
         "_name": "xiaofuge",
