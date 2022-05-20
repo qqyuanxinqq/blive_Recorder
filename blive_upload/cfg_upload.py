@@ -37,8 +37,8 @@ def config_gen(record_info, up_name = None) -> dict:
                 desc='''⭐烤鱼子Official⭐{}.{}.{} 直播，单推地址：https://live.bilibili.com/22259479
 粉丝群：烤鱼盖浇饭研究协会：784611303，欢迎来摸鱼
 本视频系自动上传，欢迎各位在评论区留下游戏内容、分P等相关信息
+(录播机：https://github.com/qqyuanxinqq/blive_Recorder 快就是快！)
 '''.format(record_info.get('year'), record_info.get('month'),record_info.get('day')),
-# (还在为录播迟迟没有更新而烦恼么？https://github.com/qqyuanxinqq/blive_Recorder 快就是快！)
                 thread_pool_workers=10,
                 max_retry = 10,
                 video_list_json = record_info.get('filename'), 

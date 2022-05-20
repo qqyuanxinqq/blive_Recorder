@@ -1,4 +1,3 @@
-from typing import Set
 from sqlalchemy import ForeignKey, Column, Integer, String, Boolean
 
 
@@ -13,9 +12,9 @@ class UP_DB(Base):
     nickname = Column(String, primary_key=True, nullable=False)
     added_time = Column(Integer)
     
-    is_running = Column(Boolean, default = False)
     should_running = Column(Boolean, default = False)
     is_live = Column(Boolean, nullable=False, default = False)
+    pid = Column(Integer, nullable=False, default = 0)
 
 class Live_DB(Base):
     __tablename__ = 'Live'
@@ -116,7 +115,7 @@ def add_task(engine, nickname: str) -> str:
 def kill_task(engine, nickname: str) -> int:
     '''
     Input engine object of database, and nickname
-    Return: Number of tuples been updated
+    Return: Number of tuples been updated, normally should be 1
     '''
     with engine.begin() as conn:
         result = conn.execute(
@@ -126,16 +125,18 @@ def kill_task(engine, nickname: str) -> int:
             )
         return result.rowcount
 
-def update_task_status(engine, nickname: str, is_running: bool) -> int:
-    '''
-    Input engine object of database, and nickname
-    Return: Number of tuples been updated
-    '''
+def update_pid(engine, nickname: str, pid)  -> int:
+    if not pid:
+        pid = 0
+
     with engine.begin() as conn:
         result = conn.execute(
             update(UP_DB.__table__).  
             where(UP_DB.__table__.c.nickname == nickname).
-            values({"is_running": is_running})
+            values({"pid": pid})
             )
         return result.rowcount
 
+
+def add_live(engine):
+    pass

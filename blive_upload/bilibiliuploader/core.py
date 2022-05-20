@@ -877,7 +877,7 @@ def submit_videos(access_token, sid, parts, submit_data, avid = None):
             json=submit_data,
             timeout = 60,
         )
-    print("Current {} videos submitted, status code: {}".format(len(parts), r.status_code))
+    print("Current {} videos submitted, status code: {}".format(len(parts), r.status_code), flush=True)
     print(r.content.decode())
     data = r.json()["data"]
 
