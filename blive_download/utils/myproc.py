@@ -1,11 +1,11 @@
 import os
 import time,datetime
 import sys
-from multiprocessing import Process
+from multiprocessing import get_context
 from threading import Thread
 import logging
 
-class Myproc(Process):
+class Myproc(get_context('spawn').Process):
     def __init__(self, group=None, target=None, name=None, args=(), kwargs={},
                  *, daemon=None):
         """
@@ -19,9 +19,10 @@ class Myproc(Process):
     def run(self):
         time.sleep(0.1)
         print("===========Myproc==========")
+        print(datetime.datetime.now())
         print("Process ", self.name, "has started.")
-        print("Process spawned at PID: ",os.getpid(),flush=True)
-        print("===========================")
+        print("Process spawned at PID: ",os.getpid())
+        print("===========================",flush=True)
         time.sleep(0.1)
         with open(self.logfile, "w") as f:
             sys.stdout = f

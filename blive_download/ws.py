@@ -9,6 +9,8 @@ from collections import defaultdict
 
 import websocket
 
+from blive_download.table import Danmu_DB, User_DB, insert_danmu
+
 def get_json(recv):      
     """
     process the received bytes element, return json object
@@ -51,34 +53,47 @@ def ass_time(timedelta):
 
 
 class Ass_Generator():
+    """
+    Generate and write danmu to *.ass file
+    Work for the whole Live instead of single video
+    """
     def __init__(self, live) -> None:
         self.liveinfo = live
-        self.cur_video = live.curr_video
+        self.timer = time.time()
+        self.ass_line_list = []
+        # self.previous_ass_name = ""
+        
+        # self.cur_video = live.curr_video
         
     @property
     def ass_file(self):
-        return self.cur_video.ass_name
+        return self.liveinfo.curr_video.ass_name
     @property
     def ass_starttime(self):
-        return self.cur_video.time_create
+        return self.liveinfo.curr_video.time_create
     @property
     def end_time_lst(self):
-        return self.cur_video.danmu_end_time
+        return self.liveinfo.curr_video.danmu_end_time
 
     def danmu_handler(self,j):
         """Input json object, output string in ass format"""
         ass_line = self._danmu_to_ass_line(j,self.end_time_lst,self.ass_starttime)
-        self.ass_write(ass_line)
+        self._ass_write(ass_line)
     
     def SC_handler(self,j):
         """Input json object, output string in ass format"""
         ass_line = self._SC_to_ass_line(j,self.end_time_lst,self.ass_starttime)
-        self.ass_write(ass_line)
+        self._ass_write(ass_line)
 
-    def ass_write(self, ass_line):
-        if os.path.exists(self.ass_file):
+    def _ass_write(self, ass_line):
+        self.ass_line_list.append(ass_line)
+        current = time.time()
+        if os.path.exists(self.ass_file) and current > self.timer+1:
             with open(self.ass_file,"a",encoding='UTF-8') as f:
-                f.write(ass_line)
+                for ass_line in self.ass_line_list:
+                    f.write(ass_line)
+            self.ass_line_list.clear()
+            self.timer = current
 
     @staticmethod
     def _SC_to_ass_line(j, end_time_lst, starttime):
@@ -153,7 +168,7 @@ class Ass_Generator():
 
 
 def on_error(ws, error):
-    print(error)
+    print("Error handler=====",error)
 
 def on_close(ws):
     ws.alive = False
@@ -182,12 +197,18 @@ class Message_Handler():
     def __init__(self) -> None:
         self.handlers = defaultdict(list)
         self.cmd_list = []
+        self.global_handler = []
 
     def handle(self, j) -> None:
         '''Input json object, handle it using the corresponding handlers'''
-        if j.get('cmd') not in self.cmd_list:
-            self.cmd_list.append(j.get('cmd'))
-            print(j)
+        # if j.get('cmd') not in self.cmd_list:
+        #     self.cmd_list.append(j.get('cmd'))
+        #     print(j)
+        for handler in self.global_handler:
+            try:
+                handler(j)
+            except Exception as e:
+                logging.exception(e)
         
         if j.get('cmd') in self.handlers:
             for handler in self.handlers[j.get('cmd')]:
@@ -200,9 +221,15 @@ class Message_Handler():
 
     def set_handler(self, message_type):
         """Decorator generator"""
-        def _(handler):
+        def one(handler):
             self.handlers[message_type].append(handler)
-        return _
+        def all(handler):
+            self.global_handler.append(handler)
+        if message_type == "ALL":
+            return all
+        else:
+            return one
+
 
 
 def on_message_gen(message_handler):
@@ -228,14 +255,72 @@ def on_message_gen(message_handler):
                         
     return on_message
 
+
+
+class Danmu_To_DB():
+    def __init__(self, live, engine) -> None:
+        self.live = live
+        self.engine = engine
+        self.danmu_DB_list = []
+        self.timer = time.time()
+        #A large interval can avoid frequent writing
+        #Which is necessary for SQLite that doesn't support concurrent writing
+        self.interval = 10  
+
+    def danmu_handler(self,j):
+        danmu_DB = dict(
+            live_id = self.live.live_DB.live_id,
+            video_id = self.live.curr_video.video_id,
+            content = None,
+            start_time = None,
+            uid = None,
+            username = None,
+            type = None,
+            color = None,
+            price = None,
+        )
+        
+        if j.get('cmd') == 'DANMU_MSG':
+            danmu_DB.update(dict(
+                live_id = self.live.live_DB.live_id,
+                video_id = self.live.curr_video.video_id,
+                content = j.get('info')[1],
+                start_time = j.get('info')[0][4]//1000,
+                uid = j.get('info')[2][0],
+                username = j.get('info')[2][1],
+                type = j.get('cmd'),
+                color = j.get('info')[0][3]
+            ))
+            self.write_to_DB(danmu_DB)
+        elif j.get('cmd') == 'SUPER_CHAT_MESSAGE':
+            danmu_DB.update(dict(
+                live_id = self.live.live_DB.live_id,
+                video_id = self.live.curr_video.video_id,
+                content = j["data"]["message"],
+                start_time = j["data"]["start_time"],
+                uid = j["data"]["uid"],
+                username = j["data"]["user_info"]["uname"],
+                type = j.get('cmd'),
+                price = j["data"]["price"]
+            ))
+            self.write_to_DB(danmu_DB)
+        
+    def write_to_DB(self, entry):
+        self.danmu_DB_list.append(entry)
+        current = time.time()
+        if self.danmu_DB_list and current > self.timer + self.interval:
+            insert_danmu(self.engine, self.danmu_DB_list)
+            self.danmu_DB_list.clear()
+            self.timer = time.time()
+
+
 class Danmu_Counter():
     def __init__(self,live_info) -> None:
         self.live_info = live_info
-    def count(self,j):
+    def count(self, j):
         self.live_info.num_danmu_total += 1
     
-
-def danmu_ws(opening,live_info):
+def danmu_ws(opening,live_info, engine):
     message_handler = Message_Handler()
 
     ass_handler = Ass_Generator(live_info)
@@ -243,6 +328,8 @@ def danmu_ws(opening,live_info):
     message_handler.set_handler('SUPER_CHAT_MESSAGE')(ass_handler.SC_handler)
     
     message_handler.set_handler('DANMU_MSG')(Danmu_Counter(live_info).count)
+
+    message_handler.set_handler('ALL')(Danmu_To_DB(live_info, engine).danmu_handler)
    
     ws = websocket.WebSocketApp("wss://broadcastlv.chat.bilibili.com/sub",
                               on_message = on_message_gen(message_handler),

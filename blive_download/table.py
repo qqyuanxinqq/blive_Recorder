@@ -23,39 +23,46 @@ class Live_DB(Base):
     room_id = Column(Integer, nullable=False)
     start_time = Column(Integer, nullable=False)
     end_time = Column(Integer)
-    is_live = Column(Boolean, nullable=False)
-    is_uploaded = Column(String)
+    duration = Column(Integer)
+    # is_live = Column(Boolean, nullable=False, default = False)
+    is_uploaded = Column(Boolean, nullable=False, default = False)
 
 class Video_DB(Base):
     __tablename__ = 'Video'
     video_id = Column(Integer, primary_key=True)
+    videoname = Column(String, nullable=False)
     live_id = Column(Integer, ForeignKey('Live.live_id'), nullable=False)
     start_time = Column(Integer, nullable=False)
     end_time = Column(Integer)
+    duration = Column(Integer)
     size = Column(Integer)
     is_live = Column(Boolean, nullable=False)
     is_stored = Column(Boolean, nullable=False)
     server_name = Column(String)
 
 
-    # https://zhuanlan.zhihu.com/p/37874066
+    # Danmu protocal https://zhuanlan.zhihu.com/p/37874066
 class Danmu_DB(Base):
     __tablename__ = 'Danmu'
     danmu_id = Column(Integer, primary_key=True)
-    video_id = Column(Integer, ForeignKey('Video.video_id'))
+    live_id = Column(Integer, ForeignKey('Live.live_id'), nullable=False)
+    video_id = Column(Integer)
     content = Column(String, nullable=False)
     start_time = Column(Integer, nullable=False)
-    uid = Column(Integer, ForeignKey('User.uid'))
+    uid = Column(Integer, nullable = False)
+    username = Column(String, nullable=False)
     type = Column(String, nullable=False)
+    color = Column(Integer)   #RGB in decimal
+    price = Column(Integer)
     
 
 
 class User_DB(Base):
     __tablename__ = 'User'
-    rowid = Column(Integer, primary_key=True)
-    uid = Column(Integer, nullable=False)
+    uid = Column(Integer, primary_key=True)
     username = Column(String, nullable=False) 
     symbol = Column(String)
+    symbol_UP_name = Column(String)
     symbol_level = Column(Integer)
 
 
@@ -73,8 +80,13 @@ def clear_status(engine):
     drop_table(UP_DB.__table__, engine)
 
 from sqlalchemy import create_engine
-def create_db(target:str):
-    engine = create_engine("sqlite+pysqlite:///{}".format(target), future=True)
+def connect_db(target:str):
+    # import logging
+    # logging.basicConfig()
+    # logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+    # logging.getLogger("sqlalchemy.pool").setLevel(logging.DEBUG)
+
+    engine = create_engine("sqlite+pysqlite:///{}".format(target), future=True, echo = True, echo_pool = "debug")
     mapper_registry.metadata.create_all(engine)
     return engine
 
@@ -98,6 +110,12 @@ def get_task(engine) -> List:
         rtn=[row[0] for row in result]
     return rtn
 
+    # blive_download.table.UP_DB.__table__.c.keys()
+    # with engine.begin() as conn:
+    #     result = conn.execute(
+    #         select(UP_DB.__table__)
+    #         )
+    #     return result.rowcount
 def add_task(engine, nickname: str) -> str:
 
     '''
@@ -138,5 +156,26 @@ def update_pid(engine, nickname: str, pid)  -> int:
         return result.rowcount
 
 
-def add_live(engine):
-    pass
+def update_live(engine, live: Live_DB):
+    with Session(engine) as session:
+        session.expire_on_commit = False
+        session.add(live)
+        session.commit()
+    return live
+
+def update_video(engine, video: Video_DB):
+    with Session(engine) as session:
+        session.expire_on_commit = False
+        session.add(video)
+        session.commit()
+    return video
+
+
+
+def insert_danmu(engine, danmu_DB_list):
+    with engine.begin() as conn:
+        conn.execute(
+            insert(Danmu_DB.__table__),
+            danmu_DB_list
+            )
+        # return result.rowcount    #Avoid unnecessary ocuupation to the locking connection.

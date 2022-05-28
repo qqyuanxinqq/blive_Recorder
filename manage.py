@@ -3,7 +3,7 @@ from blive_download.utils import configCheck
 
 
 conf = configCheck()
-engine = blive_download.table.create_db(conf["_default"]["Database"])
+engine = blive_download.table.connect_db(conf["_default"]["Database"])
 
 
 def add_task(up_name):

@@ -1,6 +1,6 @@
 {
     "_default": {
-        "Enabled_recorder": ["kaofish","xiaotudou","api"],
+        "Enabled_recorder": ["kaofish","xiaotudou","api","naicha","yommyko", "test"],
         "Database": "recording_db.db",
         "_name": "_default",
         "_room_id": "",
@@ -29,6 +29,26 @@
     "xiaofuge": {
         "_name": "xiaofuge",
         "_room_id": "24794193",
+        "_div_size_gb": "1"
+    },
+    "naicha": {
+        "_name": "naicha",
+        "_room_id": "1220",
+        "_div_size_gb": "1"
+    },
+    "yommyko": {
+        "_name": "yommyko",
+        "_room_id": "21263282",
+        "_div_size_gb": "1"
+    },
+    "test": {
+        "_name": "test",
+        "_room_id": "999",
+        "_div_size_gb": "1"
+    },
+    "test2": {
+        "_name": "test2",
+        "_room_id": "999",
         "_div_size_gb": "1"
     }
 }

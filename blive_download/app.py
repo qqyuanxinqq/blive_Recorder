@@ -6,7 +6,7 @@ import signal
 
 from .recorder import Recorder
 
-from .table import add_task, clear_status, create_db, get_task, kill_task, update_pid
+from .table import add_task, clear_status, connect_db, get_task, kill_task, update_pid
 from .utils import configCheck
 from .utils import Myproc
         
@@ -25,8 +25,8 @@ class App():
         self.recorders = {}
         self.engine = None
 
-        conf = configCheck()
-        self.database = conf["_default"].get("Database")
+        self.conf = configCheck()
+        self.database = self.conf["_default"].get("Database")
 
         os.makedirs(LOG_PATH, exist_ok = True)
 
@@ -48,19 +48,18 @@ class App():
             
         '''       
         if self.database:
-            self.engine = create_db(self.database)
+            self.engine = connect_db(self.database)
         else:
             raise Exception("Please provide valid database directory!!!")
 
-        conf = configCheck()
-        if conf["_default"]["Enabled_recorder"]:
-            recorder_enabled = conf["_default"]["Enabled_recorder"]
+        if self.conf["_default"]["Enabled_recorder"]:
+            recorder_enabled = self.conf["_default"]["Enabled_recorder"]
         else:
-            recorder_enabled = conf.keys()
+            recorder_enabled = self.conf.keys()
         
         
         try:
-            for up_name in conf.keys():
+            for up_name in self.conf.keys():
                 if up_name == "_default" or up_name not in recorder_enabled:
                     continue
                 add_task(self.engine, up_name)
