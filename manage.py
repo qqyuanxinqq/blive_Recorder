@@ -1,19 +1,25 @@
-import blive_download.table
+from blive_download.model import connect_db, RecorderManager
+from blive_download.model.VideoDB import VideoManager
 from blive_download.utils import configCheck
 
 
 conf = configCheck()
-engine = blive_download.table.connect_db(conf["_default"]["Database"])
-
+engine = connect_db(conf["_default"]["Database"])
+recorderM = RecorderManager(engine)
+videoM = VideoManager(engine)
 
 def add_task(up_name):
-    blive_download.table.add_task(engine, up_name)
+    recorderM.add_task(up_name)
 
 
 def kill_task(up_name):
-    blive_download.table.kill_task(engine, up_name)
+    recorderM.kill_task(up_name)
 
 def list_task():
-    pids = [(i.nickname, i.pid) for i in blive_download.table.get_task(engine) if i.pid != 0]
+    pids = [(i.nickname, i.pid) for i in recorderM.get_task() if i.pid != 0]
     print(pids)
 
+l = videoM.get_stored_videos()
+for v in l:
+    print(v.start_time,v.videoname)
+print(v)

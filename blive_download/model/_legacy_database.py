@@ -1,11 +1,11 @@
+# pylint: disable=no-member
 from sqlalchemy import ForeignKey, Column, Integer, String, Boolean
-
 
 from sqlalchemy.orm import registry
 mapper_registry = registry()
 Base = mapper_registry.generate_base()
 
-class UP_DB(Base):
+class Recorder_DB(Base):
     __tablename__ = 'Up_name'
 
     # up_name = Column(String, nullable=False)
@@ -77,7 +77,7 @@ def drop_table(table, engine):
     table.drop(engine)
 
 def clear_status(engine):
-    drop_table(UP_DB.__table__, engine)
+    drop_table(Recorder_DB.__table__, engine)
 
 from sqlalchemy import create_engine
 def connect_db(target:str):
@@ -101,11 +101,11 @@ from sqlalchemy.orm import Session
 def get_task(engine) -> List:
     '''
     Input engine object of database
-    Output list of UP_DB objects in 'Up_name' table
+    Output list of Recorder_DB objects in 'Up_name' table
     '''
     with Session(engine) as session:
         result = session.execute(
-            select(UP_DB)
+            select(Recorder_DB)
             )
         rtn=[row[0] for row in result]
     return rtn
@@ -124,7 +124,7 @@ def add_task(engine, nickname: str) -> str:
     '''
     with engine.begin() as conn:
         result = conn.execute(
-            insert(UP_DB.__table__). 
+            insert(Recorder_DB.__table__). 
             values({"nickname": nickname, "added_time":int(time()), "should_running": True}).
             on_conflict_do_update(index_elements = ["nickname"], set_= {"added_time":int(time()), "should_running": True})
             )
@@ -137,8 +137,8 @@ def kill_task(engine, nickname: str) -> int:
     '''
     with engine.begin() as conn:
         result = conn.execute(
-            update(UP_DB.__table__).  
-            where(UP_DB.__table__.c.nickname == nickname).
+            update(Recorder_DB.__table__).  
+            where(Recorder_DB.__table__.c.nickname == nickname).
             values({"should_running": False})
             )
         return result.rowcount
@@ -149,8 +149,8 @@ def update_pid(engine, nickname: str, pid)  -> int:
 
     with engine.begin() as conn:
         result = conn.execute(
-            update(UP_DB.__table__).  
-            where(UP_DB.__table__.c.nickname == nickname).
+            update(Recorder_DB.__table__).  
+            where(Recorder_DB.__table__.c.nickname == nickname).
             values({"pid": pid})
             )
         return result.rowcount

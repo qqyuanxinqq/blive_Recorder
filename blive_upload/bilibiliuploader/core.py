@@ -330,7 +330,7 @@ def upload_cover(access_token, sid, cover_file_path):
             'sid': sid
         },
         verify=False,
-        timeout = 180,
+        timeout = 60,
     )
 
     return r.json()["data"]["url"]
@@ -384,7 +384,7 @@ def upload_chunk(upload_url, server_file_name, local_file_name, chunk_data, chun
         cookies={
             'PHPSESSID': server_file_name
         },
-        timeout = 600,        
+        timeout = 120,        
     )   
     return status
 

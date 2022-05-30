@@ -1,3 +1,6 @@
+## 05/30/2022
+Add disk space management. This background thread will automatically check the usage of disk and delete the oldest video by default. 
+
 ## 05/27/2022
 Fixed (hopefully) the "Database is locked" error. SQLite does not support concurrent writing, so frequency writing will lead to this error. (The overhead of this application should be low enough, but sometimes a connection will be held longer than necessary for unknown reason.) Now the DB writing frequnecy is decreased by buffering more danmu_DB entries in memory with a longer DB writing interval. 
 

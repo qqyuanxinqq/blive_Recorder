@@ -5,12 +5,14 @@ import json
 from threading import Thread
 import sys
 # import subprocess
-from typing import Tuple
+from typing import List, Tuple, Union
 import logging
 
 from filelock import FileLock
 
-from blive_download.table import Live_DB, Video_DB, connect_db, update_live, update_video
+from blive_download.model.VideoDB import VideoManager
+
+from .model import Live_DB, LiveManager, Video_DB, connect_db
 
 from .api import is_live,get_stream_url,ws_open_msg,room_id
 from .ws import danmu_ws
@@ -21,8 +23,6 @@ from .utils import Myproc
         
 # from blive_upload import upload
 #This absolute path import requires root directory have "blive_upload" folder
-
-
 
 class Recorder():
     def __init__(self, up_name, upload_func =None):
@@ -44,12 +44,13 @@ class Recorder():
         self._flvtag_update = default_conf["_flvtag_update"]
         self._upload = default_conf["_upload"]
         self._path = default_conf["_path"]
-
+        self.storage_stg = default_conf["storage"]
         
         self.database = default_conf.get("Database")
-        if self.database:
-            self.engine = connect_db(self.database)
-        
+        self.engine = connect_db(self.database)
+        self.live_manager = LiveManager(self.engine)
+        self.video_manager = VideoManager(self.engine)
+
         conf = configCheck(up_name = up_name)[self.up_name]
         for key in conf:
             setattr(self, key, conf[key])
@@ -77,14 +78,14 @@ class Recorder():
 
                 #Information about this live
                 self.live = Live(self.engine, self.up_name,self.live_dir, self._room_id)
+                self.live_manager.update_live(self.live.live_DB)
 
                 threads = []
                 try:
                     self.live.dump_record_info()
-                    
                     # Setup  ws_checking_loop
                     ws_thread = Thread(target=self.check_ws_loop)
-                    ws_thread.setDaemon(True)
+                    ws_thread.daemon = True
                     ws_thread.start()    
 
                     #Init upload process  
@@ -101,7 +102,7 @@ class Recorder():
                         
                         #New video starts
                         self.live.curr_video = self.live.init_video() # type: ignore
-                        self.live.update_video_DB(self.engine) 
+                        self.video_manager.update_videos([self.live.curr_video]) 
 
                         ass_gen(self.live.curr_video.ass_name,"head.ass") 
 
@@ -109,8 +110,8 @@ class Recorder():
                         
                         #Current video ends
                         if not rtncode:
-                            self.live.finalize_video(int(time.time()), video_size)
-                            self.live.update_video_DB(self.engine)
+                            self.live.finalize_video(True, int(time.time()), video_size, self.storage_stg)
+                            self.video_manager.update_videos([self.live.curr_video]) 
                             #Modify recorded video and dump updated record_info
                             self.live.dump_record_info()
                             t_post_record = Thread(target=self.__post_record, args=(self.live.curr_video.videoname, self.live.append_curr_video), name=self.live.curr_video.videoname)  # type: ignore
@@ -118,11 +119,14 @@ class Recorder():
                             threads.append(t_post_record)
                         else:
                             print("record failed on {}".format(self.live.curr_video.videoname))
+                            self.live.finalize_video(False, int(time.time()), 0, self.storage_stg)
+                            self.video_manager.update_videos([self.live.curr_video]) 
                         print("Total number of danmu so far is : ", self.live.num_danmu_total, datetime.datetime.now())
 
                     #When live ends
-                    self.live.end_time = int(time.time())  # type: ignore
-                    self.live.update_live_DB(self.engine)
+                    self.live.end_time = int(time.time()) 
+                    self.live.update_live_DB()
+                    self.live_manager.update_live(self.live.live_DB)
 
                 except Exception as e:
                     logging.exception(e)
@@ -149,7 +153,7 @@ class Recorder():
             
         callback(filename)
     
-    def run_ws(self):
+    def __run_ws(self):
         opening_msg = ws_open_msg(int(self._room_id))
         ws = danmu_ws(opening_msg, self.live, self.engine)
         ws_thread = Thread(target=ws.run_forever)
@@ -161,11 +165,11 @@ class Recorder():
         '''
         Loop for checking ws status, effective only when live is still on
         '''
-        ws, ws_thread = self.run_ws()
+        ws, ws_thread = self.__run_ws()
         while True:
             if not ws_thread.is_alive():
                 print("WS has been terminated somehow! Restart WS!")
-                ws, ws_thread = self.run_ws()
+                ws, ws_thread = self.__run_ws()
             
             if self.live.end_time:
                 ws.close()
@@ -211,24 +215,54 @@ class Recorder():
             return None,None
         return real_url,headers
 
+
+    # def set_record_info(self):
+    #     now = self.time_create
+    #     self.record_info = {'year':now.strftime("%Y"),
+    #         'month':now.strftime("%m"),
+    #         'day':now.strftime("%d"),
+    #         'hour':now.strftime("%H"),
+    #         'time_format':TIMEFORMAT,
+    #         'time':now.strftime(TIMEFORMAT),
+    #         #Absolute path for record info file
+    #         'filename':os.path.abspath(os.path.join(self.record_info_dir, self.up_name+ now.strftime(TIMEFORMAT+".json"))),
+    #         'videolist':[],
+    #         'up_name': self.up_name,
+    #         #Absolute path for video directory
+    #         'directory': os.path.abspath(self.live_dir),
+    #         'Status':"Living"
+    #         }
+
+
 TIMEFORMAT = "_%Y%m%d_%H-%M-%S"
+
+# class Live2(Live_DB):
+#     def update_live_DB(self):
+#         self.nickname = self.up_name
+#         self.room_id = self.room_id
+#         self.start_time = int(self.time_create.timestamp())  # type: ignore
+#         self.end_time = self.end_time  # type: ignore
+#         if self.end_time:
+#             self.live_DB.duration = self.end_time-self.live_DB.start_time
+#         self.live_manager.update_live(self.live_DB)
+
 
 class Live():
     video_info_dir = "video_list"
 
-    def __init__(self, engine, up_name,live_dir, room_id):
+    def __init__(self, engine, up_name,live_dir, roomid):
         self.live_dir = live_dir
         self.record_info_dir = os.path.join(self.live_dir, self.video_info_dir)
         os.makedirs(self.record_info_dir , exist_ok = True)
         
         self.up_name = up_name
-        self.room_id = room_id
+        self.room_id = roomid
         self.time_create = datetime.datetime.now()
-        self.end_time = None
+        self.end_time: Union[None, int] = None
         self.set_record_info()
         
         self.live_DB = Live_DB()
-        self.update_live_DB(engine)
+        self.update_live_DB()
 
         #curr_video needs to be initialized for websocket app works properly
         self.curr_video = self.init_video()      # type: ignore
@@ -236,17 +270,13 @@ class Live():
         self.num_danmu_total = 0
         
 
-    def update_live_DB(self, engine):
+    def update_live_DB(self):
         self.live_DB.nickname = self.up_name
         self.live_DB.room_id = self.room_id
         self.live_DB.start_time = int(self.time_create.timestamp())  # type: ignore
         self.live_DB.end_time = self.end_time  # type: ignore
         if self.end_time:
             self.live_DB.duration = self.end_time-self.live_DB.start_time
-        update_live(engine, self.live_DB)
-
-    def update_video_DB(self, engine):
-        update_video(engine,self.curr_video)    # type: ignore
 
     def init_video(self):
         video = Video()
@@ -263,12 +293,13 @@ class Live():
         video.is_stored = False  # type: ignore
         return video
     
-    def finalize_video(self, end_time, size):
+    def finalize_video(self, is_stored, end_time, size, storage_stg):
         self.curr_video.end_time = end_time # type: ignore
         self.curr_video.duration = end_time - self.curr_video.start_time    # type: ignore
         self.curr_video.size = size     # type: ignore
         self.curr_video.is_live = False  # type: ignore
         self.curr_video.is_stored = True  # type: ignore
+        self.curr_video.deletion_type = storage_stg
         
 
 
@@ -306,8 +337,14 @@ class Live():
         curr_num = self.num_danmu_total
         return curr_num - prev_num
 
+
 class Video(Video_DB):
-    ass_name = ""
+    time_create: datetime.datetime
+    up_name: str
+    live_dir: str
+    filename: str
+    ass_name: str
+    danmu_end_time: List[datetime.timedelta]
 
 
     # def init(self, up_name: str, live_dir: str):

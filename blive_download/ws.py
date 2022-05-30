@@ -9,7 +9,7 @@ from collections import defaultdict
 
 import websocket
 
-from blive_download.table import Danmu_DB, User_DB, insert_danmu
+from blive_download.model.DanmuDB import DanmuManager
 
 def get_json(recv):      
     """
@@ -51,11 +51,13 @@ def ass_time(timedelta):
     sd=(timedelta//datetime.timedelta(microseconds=10**4))%100
     return "{}:{:0>2d}:{:0>2d}.{:0>2d}".format(h,m,s,sd)
 
-
+ASS_DURATION = 10
 class Ass_Generator():
     """
     Generate and write danmu to *.ass file
     Work for the whole Live instead of single video
+
+    If curr_video attribute doesn't exist, it ignores the message.
     """
     def __init__(self, live) -> None:
         self.liveinfo = live
@@ -64,32 +66,50 @@ class Ass_Generator():
         # self.previous_ass_name = ""
         
         # self.cur_video = live.curr_video
-        
+
     @property
-    def ass_file(self):
+    def curr_video(self):
+        if not hasattr(self.liveinfo, 'curr_video'):
+            return False
+
+        if self.liveinfo.curr_video:
+            return True
+        else:
+            return False
+
+    @property
+    def __ass_file(self):
         return self.liveinfo.curr_video.ass_name
     @property
-    def ass_starttime(self):
+    def __ass_starttime(self):
         return self.liveinfo.curr_video.time_create
     @property
-    def end_time_lst(self):
+    def __end_time_lst(self):
         return self.liveinfo.curr_video.danmu_end_time
 
     def danmu_handler(self,j):
-        """Input json object, output string in ass format"""
-        ass_line = self._danmu_to_ass_line(j,self.end_time_lst,self.ass_starttime)
-        self._ass_write(ass_line)
+        """
+        Input json object, output string in ass format
+        If curr_video attribute doesn't exist, it ignores the message.
+        """
+        if self.curr_video:
+            ass_line = self._danmu_to_ass_line(j,self.__end_time_lst,self.__ass_starttime)
+            self._ass_write(ass_line)
     
     def SC_handler(self,j):
-        """Input json object, output string in ass format"""
-        ass_line = self._SC_to_ass_line(j,self.end_time_lst,self.ass_starttime)
-        self._ass_write(ass_line)
+        """
+        Input json object, output string in ass format
+        If curr_video attribute doesn't exist, it ignores the message.
+        """
+        if self.curr_video:
+            ass_line = self._SC_to_ass_line(j,self.__end_time_lst,self.__ass_starttime)
+            self._ass_write(ass_line)
 
     def _ass_write(self, ass_line):
         self.ass_line_list.append(ass_line)
         current = time.time()
-        if os.path.exists(self.ass_file) and current > self.timer+1:
-            with open(self.ass_file,"a",encoding='UTF-8') as f:
+        if os.path.exists(self.__ass_file) and current > self.timer+1:
+            with open(self.__ass_file,"a",encoding='UTF-8') as f:
                 for ass_line in self.ass_line_list:
                     f.write(ass_line)
             self.ass_line_list.clear()
@@ -115,13 +135,13 @@ class Ass_Generator():
             #print(i)
             if i == len(end_time_lst):
                 Y=i*25
-                end_time_lst.append(danmu_end)
+                end_time_lst.append(danmu_end + danmu_l/768*ASS_DURATION*datetime.timedelta(seconds=1))
                 break
-            if (768 + danmu_l) / 10 * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) >  768: 
+            if (768 + danmu_l) / ASS_DURATION * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) >  768: 
                 continue
             else:
                 Y=i*25
-                end_time_lst[i] = danmu_end
+                end_time_lst[i] = danmu_end + danmu_l/768*ASS_DURATION*datetime.timedelta(seconds=1)
                 break
         move = "\\pos({},{})".format(384, Y)+"\\c&H{}".format(''.join([color_h[4:6],color_h[2:4],color_h[0:2]]))
         ass_line="Dialogue: 0,{},{},R2L,{},20,20,2,,{{ {} }}{} \n".format(ass_time(danmu_start), 
@@ -140,7 +160,7 @@ class Ass_Generator():
         danmu_start = datetime.datetime.fromtimestamp(j.get('info')[0][4]/1000)-starttime
         
         danmu_l=len(danmu)*25   #Size of each chinese character is 25, english character considered to be half, 768 is the X size from the .ass file
-        danmu_end = danmu_start + datetime.timedelta(seconds=10)
+        danmu_end = danmu_start + datetime.timedelta(seconds=ASS_DURATION)
         #Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         #Moving danmu: \move(<Start_x1>,<Start_y1>,<End_x2>,<End_y2>)
         X1 = 768 + danmu_l / 2
@@ -150,13 +170,11 @@ class Ass_Generator():
             #print(i)
             if i == len(end_time_lst):
                 Y=i*25
-                end_time_lst.append(danmu_end)
+                end_time_lst.append(danmu_end + danmu_l/768*ASS_DURATION*datetime.timedelta(seconds=1))
                 break
-            if (768 + danmu_l) / 10 * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) >  768: 
-                continue
-            else:
+            if (768 + danmu_l) / ASS_DURATION * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) <=  768: 
                 Y=i*25
-                end_time_lst[i] = danmu_end
+                end_time_lst[i] = danmu_end + danmu_l/768*ASS_DURATION*datetime.timedelta(seconds=1)
                 break
         move = "\\move({},{},{},{})".format(X1, Y, X2, Y)+"\\c&H{}".format(''.join([color_h[4:6],color_h[2:4],color_h[0:2]]))
         ass_line="Dialogue: 0,{},{},R2L,{},20,20,2,,{{ {} }}{} \n".format(ass_time(danmu_start), 
@@ -261,11 +279,12 @@ class Danmu_To_DB():
     def __init__(self, live, engine) -> None:
         self.live = live
         self.engine = engine
+        self.danmu_manager = DanmuManager(self.engine)
         self.danmu_DB_list = []
         self.timer = time.time()
         #A large interval can avoid frequent writing
         #Which is necessary for SQLite that doesn't support concurrent writing
-        self.interval = 10  
+        self.DBconnection_interval = 30  
 
     def danmu_handler(self,j):
         danmu_DB = dict(
@@ -308,8 +327,8 @@ class Danmu_To_DB():
     def write_to_DB(self, entry):
         self.danmu_DB_list.append(entry)
         current = time.time()
-        if self.danmu_DB_list and current > self.timer + self.interval:
-            insert_danmu(self.engine, self.danmu_DB_list)
+        if self.danmu_DB_list and current > self.timer + self.DBconnection_interval:
+            self.danmu_manager.insert_danmu(self.danmu_DB_list)
             self.danmu_DB_list.clear()
             self.timer = time.time()
 

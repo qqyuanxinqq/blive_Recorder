@@ -1,12 +1,15 @@
+from threading import Thread
 import time,datetime
 import os
 import sys
 import signal
+
+from blive_download.storage import StorageManager
 # import subprocess
 
 from .recorder import Recorder
 
-from .table import add_task, clear_status, connect_db, get_task, kill_task, update_pid
+from .model import clear_status, connect_db, RecorderManager
 from .utils import configCheck
 from .utils import Myproc
         
@@ -27,6 +30,10 @@ class App():
 
         self.conf = configCheck()
         self.database = self.conf["_default"].get("Database")
+        self.engine = connect_db(self.database)
+
+        self.storage_manager = StorageManager(self.conf["_default"]["_path"], self.engine)
+        self.recorder_manager = RecorderManager(self.engine)
 
         os.makedirs(LOG_PATH, exist_ok = True)
 
@@ -47,25 +54,24 @@ class App():
                     kill task                    
             
         '''       
-        if self.database:
-            self.engine = connect_db(self.database)
-        else:
-            raise Exception("Please provide valid database directory!!!")
 
         if self.conf["_default"]["Enabled_recorder"]:
             recorder_enabled = self.conf["_default"]["Enabled_recorder"]
         else:
             recorder_enabled = self.conf.keys()
-        
-        
+
+        t = Thread(target = self.storage_manager.loop)
+        t.setDaemon(True)
+        t.start()
+
         try:
             for up_name in self.conf.keys():
                 if up_name == "_default" or up_name not in recorder_enabled:
                     continue
-                add_task(self.engine, up_name)
+                self.recorder_manager.add_task(up_name)
 
             while True:
-                should_run_set = set([i.nickname for i in get_task(self.engine) if i.should_running == True])
+                should_run_set = set([i.nickname for i in self.recorder_manager.get_task() if i.should_running == True])
                 for up_name in should_run_set - self.recorders.keys():
                     p = self.prep_record_Process(up_name)            
                     self.run_record_Process(up_name, p)
@@ -88,15 +94,16 @@ class App():
                     self.recorders[up_name].close()
 
                     self.recorders.pop(up_name)
-                    update_pid(self.engine, up_name, 0)
+                    self.recorder_manager.update_pid(up_name, 0)
 
-                    kill_task(self.engine, up_name)   #Avoid keep restarting the dead process. 
+                    self.recorder_manager.kill_task(up_name)   #Avoid keep restarting the dead process. 
 
                 time.sleep(30)
         finally:
             for up_name, p in self.recorders.items():
                 os.kill(p.pid, signal.SIGINT)
             clear_status(self.engine)
+            
             print("Exit Successfully!")
 
 
@@ -118,7 +125,7 @@ class App():
 
         if not p.pid:
             print("[{}] Missing PID!!!!!!!!".format(up_name))
-        update_pid(self.engine, up_name, p.pid)
+        self.recorder_manager.update_pid(up_name, p.pid)
         return
 
     @staticmethod
