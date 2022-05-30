@@ -18,8 +18,3 @@ def kill_task(up_name):
 def list_task():
     pids = [(i.nickname, i.pid) for i in recorderM.get_task() if i.pid != 0]
     print(pids)
-
-l = videoM.get_stored_videos()
-for v in l:
-    print(v.start_time,v.videoname)
-print(v)
