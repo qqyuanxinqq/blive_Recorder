@@ -30,8 +30,8 @@ def get_json(recv):
                 temp=zlib.decompress(recv[16:])
                 i=1
                 rtn=[]
-                while temp[16+i:].find(b'{"cmd":')!=-1:
-                    j=temp[16+i:].find(b'{"cmd":')
+                while temp[16+i:].find(b'\x00{"cmd":')!=-1:
+                    j=temp[16+i:].find(b'\x00{"cmd":')+1
                     rtn.append(json.loads(temp[16+i-1:16+i+j-16]))
                     i=i+j+1
                 rtn.append(json.loads(temp[16+i-1:]))
