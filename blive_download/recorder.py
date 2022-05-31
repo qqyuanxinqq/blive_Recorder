@@ -1,4 +1,3 @@
-import urllib
 import time,datetime
 import os
 import json
@@ -14,7 +13,7 @@ from blive_download.model.VideoDB import VideoManager
 
 from .model import Live_DB, LiveManager, Video_DB, connect_db
 
-from .api import is_live,get_stream_url,ws_open_msg,room_id
+from .api import is_live,get_stream_url, record_by_size,ws_open_msg,room_id
 from .ws import danmu_ws
 from .flvmeta import flvmeta_update
 
@@ -363,72 +362,7 @@ def ass_gen(ass_name, header):
         with open (ass_name,"x",encoding='UTF-8') as f_ass:
             f_ass.write(ass_head)  
 
-def record_by_size(url, file_name,headers,divsize) -> Tuple[int,int]:
-    if not url:
-        return -1, 0
-    res = None
-    retry_num = 0
-    r = urllib.request.Request(url,headers=headers)  # type: ignore
-    # print(url)
-    while retry_num <5 :
-        try :
-            # Must add timeout, otherwise program may get stuck at read(5), where fd=5 is socket.
-            res = urllib.request.urlopen(r, timeout = 5)  # type: ignore
-            break
-        except Exception as e:
-            logging.exception(e)
-            print(retry_num,"=============================")
-            print(e)
-            print("=============================")
-            retry_num +=1
-            time.sleep(1)
-    if not res:
-        return -1, 0 
-    
-    with open(file_name, 'wb') as f:    
-        print('starting download from:\n%s\nto:\n%s' % (url, file_name))
-        size = 0
-        # _buffer = res.read(1024 *256)
-        n = 0
-        now_1=datetime.datetime.now()
-        while n < 5:
-            try:
-                _buffer = res.read(1024 * 32)
-            except Exception as e:
-                _buffer = b''
-                logging.exception(e)
-                print("=============================")
-                print(e)
-                print("=============================")
-            
-            if len(_buffer) == 0:
-                print('==========Currently buffer empty!=={}========='.format(n))
-                n+=1
-                time.sleep(0.2)
-                
-            else:
-                n = 0
-                f.write(_buffer)
-                size += len(_buffer)
-                if now_1 + datetime.timedelta(seconds=10) < datetime.datetime.now() :
-                    now_1=datetime.datetime.now()
-                    print('{:<4.2f} MB downloaded'.format(size/1024/1024),datetime.datetime.now())
-                #sys.stdout.flush()
-                if size > divsize:
-                    print("=============Maximum Size reached!==============")
-                    break
 
-    print("finnally")
-    if res:
-        res.close()
-        print("res.close()")
-
-    if os.path.isfile(file_name) and os.path.getsize(file_name) == 0:
-        os.remove(file_name)
-        print("os.remove({})".format(file_name))
-        return -1, 0
-
-    return 0, size
 
 
 
