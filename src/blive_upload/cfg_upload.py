@@ -39,7 +39,7 @@ def config_gen(record_info, up_name = None) -> dict:
 本视频系自动上传，欢迎各位在评论区留下游戏内容、分P等相关信息
 (录播机：https://github.com/qqyuanxinqq/blive_Recorder 快就是快！)
 '''.format(record_info.get('year'), record_info.get('month'),record_info.get('day')),
-                thread_pool_workers=10,
+                thread_pool_workers=20,
                 max_retry = 10,
                 video_list_json = record_info.get('filename'), 
                 submit_mode = 2))
@@ -100,7 +100,7 @@ def parts_prepare(record_info):
         ))
     return parts
 
-def upload(record_info_json):
+def upload(record_info_json, *args, **kwargs):
     with FileLock(record_info_json + '.lock'):
         with open(record_info_json, 'r') as f:
             record_info = json.load(f)
@@ -112,9 +112,10 @@ def upload(record_info_json):
     try:
         login_token_file = os.path.join(record_info.get('directory'),"upload_log","bililogin.json")
         
-        uploader = uploader_prepare(login_token_file, config.get("username"), config.get("password"))
+        uploader = uploader_prepare(login_token_file, config["username"], config["password"])
         parts = parts_prepare(record_info)
         
+        config["upload_args"].update(kwargs)
         avid, bvid = uploader.replace_or_new(parts=parts, **config["upload_args"])
         print("Done! All video parts uploaded! Avid:{}, Bvid: {}".format(avid, bvid), flush = True)
     except Exception as e:

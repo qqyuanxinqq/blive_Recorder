@@ -91,7 +91,6 @@ def clear_status(engine):
     drop_table(Recorder_DB.__table__, engine)
 
 from sqlalchemy import create_engine
-from sqlalchemy.pool import SingletonThreadPool
 
 def connect_db(target:str):
     # import logging
@@ -101,7 +100,6 @@ def connect_db(target:str):
 
     engine = create_engine("sqlite+pysqlite:///{}".format(target), 
                             future=True, 
-                            poolclass= SingletonThreadPool,
                             # echo = True, 
                             # echo_pool = "debug"
                             )

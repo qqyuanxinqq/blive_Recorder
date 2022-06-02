@@ -4,8 +4,8 @@ from time import sleep
 import datetime
 import os
 from typing import Set
-from blive_download.model.VideoDB import VideoManager
-from blive_download.model.db import Video_DB
+from .model.VideoDB import VideoManager
+from .model.db import Video_DB
 
 def _remove(file_path):
     if os.path.exists(file_path):
@@ -40,11 +40,13 @@ class StorageManager():
         self.deleted_size += video.size
 
     def loop(self):
-        print("Start Storage Management")
+        print("Start Storage Management Loop")
         while True:
             self.modified_videos = set()
             self.deleted_size = 0
-
+            print("===========Myproc==========")
+            print(datetime.datetime.now())
+            print("Check Stored video files")
             videos = self.video_manager.get_stored_videos()
             for v in videos:
                 #Check is the file has been deleted or not
@@ -68,7 +70,7 @@ class StorageManager():
                         break
             self.video_manager.update_videos(self.modified_videos)
 
-            sleep(3600)
+            sleep(1800)
     
 
 

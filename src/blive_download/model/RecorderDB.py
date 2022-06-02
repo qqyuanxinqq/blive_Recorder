@@ -7,9 +7,10 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from .db import Recorder_DB, TableManager
+from ...utils import Retry
 
 class RecorderManager(TableManager):
-    
+    @Retry(max_retry = 5, interval = 10).decorator
     def get_task(self) -> List:
         '''
         Input engine object of database
@@ -28,6 +29,7 @@ class RecorderManager(TableManager):
     #         select(UP_DB.__table__)
     #         )
     #     return result.rowcount
+    @Retry(max_retry = 5, interval = 10).decorator
     def add_task(self, nickname: str) -> str:
 
         '''
@@ -41,7 +43,7 @@ class RecorderManager(TableManager):
                 on_conflict_do_update(index_elements = ["nickname"], set_= {"added_time":int(time()), "should_running": True})
                 )
             return result.inserted_primary_key[0]
-
+    @Retry(max_retry = 5, interval = 10).decorator
     def kill_task(self, nickname: str) -> int:
         '''
         Input engine object of database, and nickname
@@ -54,7 +56,7 @@ class RecorderManager(TableManager):
                 values({"should_running": False})
                 )
             return result.rowcount
-
+    @Retry(max_retry = 5, interval = 10).decorator
     def update_pid(self, nickname: str, pid)  -> int:
         if not pid:
             pid = 0

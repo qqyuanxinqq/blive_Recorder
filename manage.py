@@ -1,6 +1,5 @@
-from blive_download.model import connect_db, RecorderManager
-from blive_download.model.VideoDB import VideoManager
-from blive_download.utils import configCheck
+from src.blive_download.model import connect_db, RecorderManager, VideoManager
+from src.utils import configCheck
 
 
 conf = configCheck()

@@ -1,7 +1,7 @@
 import os
 import json
 
-CONFIG_PATH = os.path.join("config","config.json")
+CONFIG_PATH = "config.json"
 
 def configCheck(configpath = CONFIG_PATH, up_name="_default"):
     if os.path.exists(configpath) == False:

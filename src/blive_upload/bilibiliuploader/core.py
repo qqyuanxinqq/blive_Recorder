@@ -1,10 +1,10 @@
 from datetime import datetime
-from .util import cipher as cipher
+from . import cipher
 from urllib import parse
 import os
 import math
 import hashlib
-from .util.retry import Retry
+from ...utils.retry import Retry
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 import base64
 from time import sleep
@@ -161,7 +161,7 @@ def login(username, password):
     post_data['sign'] = cipher.sign_dict(post_data, APPSECRET)
     # avoid multiple url parse
     post_data['username'] = username
-    post_data['password'] = encrypted_password
+    post_data['password'] = encrypted_password  # type: ignore
 
     headers = {
         'Connection': 'keep-alive',
@@ -234,7 +234,7 @@ def login_captcha(username, password, sid):
     post_data['sign'] = cipher.sign_dict(post_data, APPSECRET)
     # avoid multiple url parse
     post_data['username'] = username
-    post_data['password'] = encrypted_password
+    post_data['password'] = encrypted_password  # type: ignore
     post_data['captcha'] = captcha_str
 
     headers = {
@@ -294,7 +294,7 @@ def login_by_access_token(access_token):
         params=login_params,
         timeout = 60,
     )
-
+    print(r.content)
     login_data = r.json()['data']
 
     return r.cookies['sid'], login_data['mid'], login_data["expires_in"]
@@ -638,7 +638,7 @@ def upload(
 
     return avid, bvid
 
-
+@Retry(max_retry = 5, interval = 1).decorator
 def get_post_data(access_token, sid, avid):
     headers = {
         'Connection': 'keep-alive',
@@ -665,6 +665,7 @@ def get_post_data(access_token, sid, avid):
         timeout = 60,
     )
 
+    print(r.content.decode())
     return r.json()["data"]
 
 # def replace_videos(
@@ -790,7 +791,7 @@ def get_post_data(access_token, sid, avid):
 #     print("Done! All {} videos uploaded!".format(post_videos_num))
 
 #     return avid, bvid
-
+@Retry(max_retry = 5, interval = 1).decorator
 def submit_videos(access_token, sid, parts, submit_data, avid = None):
     '''
     Return avid, bvid
@@ -879,7 +880,8 @@ def submit_videos(access_token, sid, parts, submit_data, avid = None):
         )
     print("Current {} videos submitted, status code: {}".format(len(parts), r.status_code), flush=True)
     print(r.content.decode())
-    data = r.json()["data"]
+    
 
+    data = r.json()["data"]
     return data["aid"], data["bvid"]
 

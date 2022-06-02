@@ -4,14 +4,12 @@ import os
 import sys
 import signal
 
-from blive_download.storage import StorageManager
-# import subprocess
-
+from .storage import StorageManager
 from .recorder import Recorder
 
 from .model import clear_status, connect_db, RecorderManager
-from .utils import configCheck
-from .utils import Myproc
+from ..utils import configCheck
+from ..utils import Myproc
         
 # from blive_upload import upload
 #This absolute path import requires root directory have "blive_upload" folder

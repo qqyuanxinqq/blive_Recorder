@@ -9,7 +9,7 @@ from collections import defaultdict
 
 import websocket
 
-from blive_download.model.DanmuDB import DanmuManager
+from .model import DanmuManager
 
 def get_json(recv):      
     """
@@ -188,9 +188,13 @@ class Ass_Generator():
 def on_error(ws, error):
     print("Error handler=====",error)
 
-def on_close(ws):
+def on_close(ws, close_status_code, close_msg):
     ws.alive = False
     print("### danmu websocket closed ###")
+    # Because on_close was triggered, we know the opcode = 8
+    if close_status_code or close_msg:
+        print("close status code: " + str(close_status_code))
+        print("close message: " + str(close_msg))
 
 
 def on_open_gen(opening_msg):  #generating on_open function with differnt opening_msg

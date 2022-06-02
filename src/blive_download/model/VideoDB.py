@@ -3,8 +3,11 @@ from typing import Iterable, List
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from .db import Live_DB, TableManager, Video_DB
+from ...utils import Retry
+
 
 class VideoManager(TableManager):
+    @Retry(max_retry = 5, interval = 10).decorator
     def update_videos(self, videos: Iterable[Video_DB]) -> Iterable[Video_DB]:
         if not videos:
             return videos
@@ -15,13 +18,14 @@ class VideoManager(TableManager):
                 session.add(video)
             session.commit()
         return videos
-
+    @Retry(max_retry = 5, interval = 10).decorator
     def get_stored_videos(self) -> List[Video_DB]:
         '''
         Input Engine
         Output a list of Video_DB objects
         '''
         with Session(self.engine) as session:
+            session.expire_on_commit = False
             result = session.execute(
                 select(Video_DB).
                 join(Live_DB).

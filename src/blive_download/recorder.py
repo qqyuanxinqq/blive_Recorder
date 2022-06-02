@@ -9,7 +9,7 @@ import logging
 
 from filelock import FileLock
 
-from blive_download.model.VideoDB import VideoManager
+from .model import VideoManager
 
 from .model import Live_DB, LiveManager, Video_DB, connect_db
 
@@ -17,8 +17,8 @@ from .api import is_live,get_stream_url, record_by_size,ws_open_msg,room_id
 from .ws import danmu_ws
 from .flvmeta import flvmeta_update
 
-from .utils import configCheck
-from .utils import Myproc
+from ..utils import configCheck
+from ..utils import Myproc
         
 # from blive_upload import upload
 #This absolute path import requires root directory have "blive_upload" folder

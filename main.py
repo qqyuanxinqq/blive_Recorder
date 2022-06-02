@@ -1,6 +1,6 @@
 import sys
-from blive_download import Recorder, App
-from blive_upload import upload
+from src.blive_download import Recorder, App
+from src.blive_upload import upload
 
 if __name__ == '__main__':
     if len(sys.argv) == 2:
