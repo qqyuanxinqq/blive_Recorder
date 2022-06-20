@@ -44,7 +44,7 @@ class StorageManager():
         while True:
             self.modified_videos = set()
             self.deleted_size = 0
-            print("===========Myproc==========")
+            print("===========StorageManager==========")
             print(datetime.datetime.now())
             print("Check Stored video files")
             videos = self.video_manager.get_stored_videos()

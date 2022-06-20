@@ -1,6 +1,6 @@
 {
     "_default": {
-        "Enabled_recorder": ["kaofish","xiaotudou","naicha","yommyko","test","test2", "api"],
+        "Enabled_recorder": ["kaofish","xiaotudou","naicha","yommyko","api", "yoshino"],
         "Database": "recording_db.db",
         "_name": "_default",
         "_room_id": "",
@@ -8,7 +8,7 @@
         "_upload": 0,
         "_flvtag_update": 1,
         "_path": "Videos/",
-        "storage": 0
+        "storage_stg": 0
     },
     "xiaotudou": {
         "_name": "xiaotudou",
@@ -20,7 +20,7 @@
         "_room_id": "22259479",
         "_div_size_gb": "2",
         "_upload": 0,
-        "storage": 2
+        "storage_stg": 2
     },
     "api": {
         "_name": "api",
@@ -51,6 +51,11 @@
     "test2": {
         "_name": "test2",
         "_room_id": "22259479",
+        "_div_size_gb": "2"
+    },
+    "yoshino": {
+        "_name": "yoshino",
+        "_room_id": "83068",
         "_div_size_gb": "2"
     }
 }

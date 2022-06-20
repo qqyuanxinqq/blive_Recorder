@@ -5,6 +5,7 @@ from sqlalchemy import ForeignKey, Column, Integer, String, Boolean
 from sqlalchemy.orm import registry
 mapper_registry = registry()
 Base = mapper_registry.generate_base()
+from ...utils import Retry
 
 class Recorder_DB(Base):  # type: ignore
     __tablename__ = 'Up_name'
@@ -92,6 +93,7 @@ def clear_status(engine):
 
 from sqlalchemy import create_engine
 
+@Retry(max_retry = 5, interval = 5).decorator
 def connect_db(target:str):
     # import logging
     # logging.basicConfig()

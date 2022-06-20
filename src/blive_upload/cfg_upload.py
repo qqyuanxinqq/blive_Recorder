@@ -39,7 +39,7 @@ def config_gen(record_info, up_name = None) -> dict:
 本视频系自动上传，欢迎各位在评论区留下游戏内容、分P等相关信息
 (录播机：https://github.com/qqyuanxinqq/blive_Recorder 快就是快！)
 '''.format(record_info.get('year'), record_info.get('month'),record_info.get('day')),
-                thread_pool_workers=20,
+                thread_pool_workers=10,
                 max_retry = 10,
                 video_list_json = record_info.get('filename'), 
                 submit_mode = 2))

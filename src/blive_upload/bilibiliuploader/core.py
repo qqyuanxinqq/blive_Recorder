@@ -791,7 +791,7 @@ def get_post_data(access_token, sid, avid):
 #     print("Done! All {} videos uploaded!".format(post_videos_num))
 
 #     return avid, bvid
-@Retry(max_retry = 5, interval = 1).decorator
+@Retry(max_retry = 3, interval = 10).decorator
 def submit_videos(access_token, sid, parts, submit_data, avid = None):
     '''
     Return avid, bvid

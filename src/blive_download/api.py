@@ -93,14 +93,18 @@ def record_by_size(url, file_name,headers,divsize) -> Tuple[int,int]:
     timeout = 2
     retry_num = 5
     
-    res = http.request(
-                    'Get', 
-                    url, 
-                    headers=headers,
-                    retries = urllib3.Retry(total = retry_num, backoff_factor = 0.2),
-                    timeout = timeout,
-                    preload_content=False
-                    )  
+    try:
+        res = http.request(
+                        'Get', 
+                        url, 
+                        headers=headers,
+                        retries = urllib3.Retry(total = retry_num, backoff_factor = 0.2),
+                        timeout = timeout,
+                        preload_content=False
+                        )  
+    except Exception as e:
+        print("Failed on: ", url)
+        return -1, 0
     
     with open(file_name, 'wb') as f:    
         print('starting download from:\n%s\nto:\n%s' % (url, file_name))

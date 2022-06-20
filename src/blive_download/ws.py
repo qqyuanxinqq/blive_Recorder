@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Union
 # from sqlite3 import Timestamp
 import zlib
 from threading import Thread
@@ -9,6 +10,7 @@ from collections import defaultdict
 
 import websocket
 
+from .model import Video
 from .model import DanmuManager
 
 def get_json(recv):      
@@ -52,6 +54,8 @@ def ass_time(timedelta):
     return "{}:{:0>2d}:{:0>2d}.{:0>2d}".format(h,m,s,sd)
 
 ASS_DURATION = 10
+RES_X = 1280
+RES_Y = 432
 class Ass_Generator():
     """
     Generate and write danmu to *.ass file
@@ -68,48 +72,50 @@ class Ass_Generator():
         # self.cur_video = live.curr_video
 
     @property
-    def curr_video(self):
+    def curr_video(self) -> Union[Video, bool]:
         if not hasattr(self.liveinfo, 'curr_video'):
             return False
 
         if self.liveinfo.curr_video:
-            return True
+            return self.liveinfo.curr_video
         else:
             return False
-
-    @property
-    def __ass_file(self):
-        return self.liveinfo.curr_video.ass_name
-    @property
-    def __ass_starttime(self):
-        return self.liveinfo.curr_video.time_create
-    @property
-    def __end_time_lst(self):
-        return self.liveinfo.curr_video.danmu_end_time
+    # @property
+    # def __ass_file(self):
+    #     return self.liveinfo.curr_video.ass_name
+    # @property
+    # def __video_file(self):
+    #     return self.liveinfo.curr_video.videoname
+    # @property
+    # def __ass_starttime(self):
+    #     return self.liveinfo.curr_video.time_create
+    # @property
+    # def __end_time_lst(self):
+    #     return self.liveinfo.curr_video.danmu_end_time
 
     def danmu_handler(self,j):
         """
         Input json object, output string in ass format
         If curr_video attribute doesn't exist, it ignores the message.
         """
-        if self.curr_video:
-            ass_line = self._danmu_to_ass_line(j,self.__end_time_lst,self.__ass_starttime)
-            self._ass_write(ass_line)
+        if isinstance(self.curr_video, Video):
+            ass_line = self._danmu_to_ass_line(j,self.curr_video.danmu_end_time,self.curr_video.time_create)
+            self._ass_write(ass_line, self.curr_video)
     
     def SC_handler(self,j):
         """
         Input json object, output string in ass format
         If curr_video attribute doesn't exist, it ignores the message.
         """
-        if self.curr_video:
-            ass_line = self._SC_to_ass_line(j,self.__end_time_lst,self.__ass_starttime)
-            self._ass_write(ass_line)
+        if isinstance(self.curr_video, Video):
+            ass_line = self._SC_to_ass_line(j,self.curr_video.danmu_end_time,self.curr_video.time_create)
+            self._ass_write(ass_line,  self.curr_video)
 
-    def _ass_write(self, ass_line):
+    def _ass_write(self, ass_line, curr_video: Video):
         self.ass_line_list.append(ass_line)
         current = time.time()
-        if os.path.exists(self.__ass_file) and current > self.timer+1:
-            with open(self.__ass_file,"a",encoding='UTF-8') as f:
+        if os.path.exists(curr_video.videoname) and current > self.timer+1:  # type: ignore
+            with open(curr_video.ass_name,"a",encoding='UTF-8') as f:
                 for ass_line in self.ass_line_list:
                     f.write(ass_line)
             self.ass_line_list.clear()
@@ -129,21 +135,21 @@ class Ass_Generator():
         #Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         #Moving danmu: \move(<Start_x1>,<Start_y1>,<End_x2>,<End_y2>)
         Y = 0
-        # X1 = 768 + danmu_l / 2
+        # X1 = 1280 + danmu_l / 2
         # X2 = 0 - danmu_l / 2
         for i in range(len(end_time_lst)+1):
             #print(i)
             if i == len(end_time_lst):
                 Y=i*25
-                end_time_lst.append(danmu_end + danmu_l/768*ASS_DURATION*datetime.timedelta(seconds=1))
+                end_time_lst.append(danmu_end + danmu_l/1280*ASS_DURATION*datetime.timedelta(seconds=1))
                 break
-            if (768 + danmu_l) / ASS_DURATION * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) >  768: 
+            if (1280 + danmu_l) / ASS_DURATION * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) >  1280: 
                 continue
             else:
                 Y=i*25
-                end_time_lst[i] = danmu_end + danmu_l/768*ASS_DURATION*datetime.timedelta(seconds=1)
+                end_time_lst[i] = danmu_end + danmu_l/1280*ASS_DURATION*datetime.timedelta(seconds=1)
                 break
-        move = "\\pos({},{})".format(384, Y)+"\\c&H{}".format(''.join([color_h[4:6],color_h[2:4],color_h[0:2]]))
+        move = "\\pos({},{})".format(1280//2, Y)+"\\c&H{}".format(''.join([color_h[4:6],color_h[2:4],color_h[0:2]]))
         ass_line="Dialogue: 0,{},{},R2L,{},20,20,2,,{{ {} }}{} \n".format(ass_time(danmu_start), 
                                                         ass_time(danmu_end),
                                                         username,
@@ -159,22 +165,22 @@ class Ass_Generator():
         color_h="{:X}".format(color_d) #RGB in Hexadecimal
         danmu_start = datetime.datetime.fromtimestamp(j.get('info')[0][4]/1000)-starttime
         
-        danmu_l=len(danmu)*25   #Size of each chinese character is 25, english character considered to be half, 768 is the X size from the .ass file
+        danmu_l=len(danmu)*25   #Size of each chinese character is 25, english character considered to be half, 1280 is the X size from the .ass file
         danmu_end = danmu_start + datetime.timedelta(seconds=ASS_DURATION)
         #Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         #Moving danmu: \move(<Start_x1>,<Start_y1>,<End_x2>,<End_y2>)
-        X1 = 768 + danmu_l / 2
+        X1 = 1280 + danmu_l / 2
         X2 = 0 - danmu_l / 2
         Y = 0
         for i in range(len(end_time_lst)+1):
             #print(i)
             if i == len(end_time_lst):
                 Y=i*25
-                end_time_lst.append(danmu_end + danmu_l/768*ASS_DURATION*datetime.timedelta(seconds=1))
+                end_time_lst.append(danmu_end + danmu_l/1280*ASS_DURATION*datetime.timedelta(seconds=1))
                 break
-            if (768 + danmu_l) / ASS_DURATION * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) <=  768: 
+            if (1280 + danmu_l) / ASS_DURATION * ((end_time_lst[i] - danmu_start)/datetime.timedelta(seconds=1)) <=  1280: 
                 Y=i*25
-                end_time_lst[i] = danmu_end + danmu_l/768*ASS_DURATION*datetime.timedelta(seconds=1)
+                end_time_lst[i] = danmu_end + danmu_l/1280*ASS_DURATION*datetime.timedelta(seconds=1)
                 break
         move = "\\move({},{},{},{})".format(X1, Y, X2, Y)+"\\c&H{}".format(''.join([color_h[4:6],color_h[2:4],color_h[0:2]]))
         ass_line="Dialogue: 0,{},{},R2L,{},20,20,2,,{{ {} }}{} \n".format(ass_time(danmu_start), 

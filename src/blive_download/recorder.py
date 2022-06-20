@@ -1,25 +1,23 @@
-import time,datetime
-import os
+import datetime
 import json
-from threading import Thread
+import logging
+import os
 import sys
+import time
+from threading import Thread
 # import subprocess
 from typing import List, Tuple, Union
-import logging
 
 from filelock import FileLock
 
-from .model import VideoManager
-
-from .model import Live_DB, LiveManager, Video_DB, connect_db
-
-from .api import is_live,get_stream_url, record_by_size,ws_open_msg,room_id
-from .ws import danmu_ws
+from ..utils import Myproc, configCheck
+from .api import get_stream_url, is_live, record_by_size, room_id, ws_open_msg
 from .flvmeta import flvmeta_update
+from .model import Live_DB, LiveManager, Video_DB, VideoManager, connect_db
+from .ws import danmu_ws
 
-from ..utils import configCheck
-from ..utils import Myproc
-        
+from .model import Video
+
 # from blive_upload import upload
 #This absolute path import requires root directory have "blive_upload" folder
 
@@ -43,7 +41,7 @@ class Recorder():
         self._flvtag_update = default_conf["_flvtag_update"]
         self._upload = default_conf["_upload"]
         self._path = default_conf["_path"]
-        self.storage_stg = default_conf["storage"]
+        self.storage_stg = default_conf["storage_stg"]
         
         self.database = default_conf.get("Database")
         self.engine = connect_db(self.database)
@@ -63,6 +61,9 @@ class Recorder():
             print("自动上传已启用")
         else:
             print("自动上传未启用")
+
+        print("Storage Mode:", self.storage_stg)
+
         sys.stdout.flush()
 
         self.live_status = False
@@ -80,17 +81,18 @@ class Recorder():
                 self.live_manager.update_live(self.live.live_DB)
 
                 threads = []
+                
+                self.live.dump_record_info()
+                # Setup  ws_checking_loop
+                ws_thread = Thread(target=self.check_ws_loop)
+                ws_thread.daemon = True
+                ws_thread.start()    
+
+                #Init upload process  
+                if self._upload == 1:
+                    self.upload(self.live.record_info)
+                
                 try:
-                    self.live.dump_record_info()
-                    # Setup  ws_checking_loop
-                    ws_thread = Thread(target=self.check_ws_loop)
-                    ws_thread.daemon = True
-                    ws_thread.start()    
-
-                    #Init upload process  
-                    if self._upload == 1:
-                        self.upload(self.live.record_info)
-
                     #Record this live
                     while self.__check_live_status() == True:                   
                         real_url,headers = self.__get_stream_url()
@@ -103,7 +105,7 @@ class Recorder():
                         self.live.curr_video = self.live.init_video() # type: ignore
                         self.video_manager.update_videos([self.live.curr_video]) 
 
-                        ass_gen(self.live.curr_video.ass_name,"head.ass") 
+                        ass_gen(self.live.curr_video.ass_name) 
 
                         rtncode, video_size = record_by_size(real_url, self.live.curr_video.videoname, headers, self.div_size)  # type: ignore
                         
@@ -264,7 +266,7 @@ class Live():
         self.update_live_DB()
 
         #curr_video needs to be initialized for websocket app works properly
-        self.curr_video = self.init_video()      # type: ignore
+        self.curr_video : Video = self.init_video()      
 
         self.num_danmu_total = 0
         
@@ -337,15 +339,6 @@ class Live():
         return curr_num - prev_num
 
 
-class Video(Video_DB):
-    time_create: datetime.datetime
-    up_name: str
-    live_dir: str
-    filename: str
-    ass_name: str
-    danmu_end_time: List[datetime.timedelta]
-
-
     # def init(self, up_name: str, live_dir: str):
     #     self.time_create = datetime.datetime.now()
     #     self.up_name = up_name
@@ -355,10 +348,26 @@ class Video(Video_DB):
     #     self.ass_name = self.filename + ".ass"        
     #     self.danmu_end_time = [datetime.timedelta(seconds=0)]     
 
-def ass_gen(ass_name, header):
+def ass_gen(ass_name):
     if os.path.exists(ass_name) == False:
-        with open (header,"r",encoding='UTF-8') as head:
-            ass_head=head.read()
+        ass_head ='''\
+[Script Info]
+Title: blive_Recorder danmu generator
+ScriptType: v4.00+
+Collisions: Normal
+PlayResX: 1280
+PlayResY: 720
+Timer: 10.0000
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Fix,Microsoft YaHei UI,25,&H00FFFFFF,&H00FFFFFF,&H00000000,&H66000000,1,0,0,0,100,100,0,0,1,1,0,8,20,20,2,0
+Style: R2L,Microsoft YaHei UI,25,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,1,0,8,20,20,2,0
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.08,0:00:10.08,R2L,,20,20,2,,{\pos(384,0)}Danmu Record Start
+'''
         with open (ass_name,"x",encoding='UTF-8') as f_ass:
             f_ass.write(ass_head)  
 

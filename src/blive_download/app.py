@@ -78,7 +78,9 @@ class App():
                     time.sleep(0.1)
                     # print("[%s]Recorder set"%up_name,datetime.datetime.now(), flush=True)
                 for up_name in self.recorders.keys() - should_run_set:
+                    # print(self.recorders[up_name].pid)
                     os.kill(self.recorders[up_name].pid, signal.SIGINT) 
+                    self.recorders[up_name].join()
 
                 stopped = []
                 for up_name, p in self.recorders.items():
