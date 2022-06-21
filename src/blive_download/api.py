@@ -3,7 +3,7 @@ import datetime, time
 import re
 import logging
 import os
-from typing import Dict, Tuple
+from typing import Callable, Dict, Tuple
 
 import urllib3
 
@@ -84,7 +84,7 @@ def get_stream_url(uid):
                     return i.get("url"),headers
     return None, None
 
-def record_by_size(url, file_name,headers,divsize) -> Tuple[int,int]:
+def record_by_size(url, file_name, headers, check_func: Callable[[int, float], bool]) -> Tuple[int,int]:
     '''
     Return (status_code, size)
     '''
@@ -106,12 +106,14 @@ def record_by_size(url, file_name,headers,divsize) -> Tuple[int,int]:
         print("Failed on: ", url)
         return -1, 0
     
+    start_time = time.time()
     with open(file_name, 'wb') as f:    
-        print('starting download from:\n%s\nto:\n%s' % (url, file_name))
+        print('starting download from:\n%s\nto:\n%s' % (url, file_name), datetime.datetime.now())
         size = 0
         n = 0
         now_1=datetime.datetime.now()
         while n < 5:
+            duration = time.time() - start_time
             try:
                 _buffer = res.read(1024 * 32)
             except Exception as e:
@@ -133,8 +135,8 @@ def record_by_size(url, file_name,headers,divsize) -> Tuple[int,int]:
                 if now_1 + datetime.timedelta(seconds=10) < datetime.datetime.now() :
                     now_1=datetime.datetime.now()
                     print('{:<4.2f} MB downloaded'.format(size/1024/1024),datetime.datetime.now())
-                if size > divsize:
-                    print("=============Maximum Size reached!==============")
+                if check_func(size, duration):
+                    print("=============End of the video reached!==============")
                     break
 
     print("finnally")
@@ -148,5 +150,3 @@ def record_by_size(url, file_name,headers,divsize) -> Tuple[int,int]:
         return -1, 0
 
     return 0, size
-
-

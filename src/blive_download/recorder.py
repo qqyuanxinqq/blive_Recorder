@@ -27,17 +27,12 @@ class Recorder():
         if os.name != 'nt':
             time.tzset()
         self.up_name = up_name
-        # self.live = None
-        # self._room_id = int()
-        # self._div_size_gb = int()
-        # self._flvtag_update = 0  #Whether apply flvmeta to update flv tags, default 0
-        # self._upload = 0    #Whether upload enabled, default not
-        # self._path = ""
         self.upload_func = upload_func
+        self.record = record_by_size
                 
         default_conf = configCheck()["_default"]
         self._room_id = default_conf["_room_id"]
-        self._div_size_gb = default_conf["_div_size_gb"]
+        self._divide_video = default_conf["_divide_video"]
         self._flvtag_update = default_conf["_flvtag_update"]
         self._upload = default_conf["_upload"]
         self._path = default_conf["_path"]
@@ -47,13 +42,20 @@ class Recorder():
         self.engine = connect_db(self.database)
         self.live_manager = LiveManager(self.engine)
         self.video_manager = VideoManager(self.engine)
-
         conf = configCheck(up_name = up_name)[self.up_name]
         for key in conf:
             setattr(self, key, conf[key])
 
         self.live_dir = os.path.join(self._path, up_name)
-        self.div_size = round(eval("1024*1024*1024*" + self._div_size_gb))
+        if self._divide_video[0] == 'size':
+            self.check_func = self.check_size(self._divide_video[1])
+        elif self._divide_video[0] == 'duration':
+            self.check_func = self.check_duration(self._divide_video[1])
+        elif self._divide_video[0] == 'rounding':
+            self.check_func = self.check_rounding_time(self._divide_video[1])
+        else:
+            raise Exception("_divide_video entry error!!!")
+
         self._room_id = room_id(self._room_id)
         
         if self._upload == 1:
@@ -102,12 +104,12 @@ class Recorder():
                             continue
                         
                         #New video starts
-                        self.live.curr_video = self.live.init_video() # type: ignore
+                        self.live.curr_video = self.live.init_video()
                         self.video_manager.update_videos([self.live.curr_video]) 
 
                         ass_gen(self.live.curr_video.ass_name) 
 
-                        rtncode, video_size = record_by_size(real_url, self.live.curr_video.videoname, headers, self.div_size)  # type: ignore
+                        rtncode, video_size = self.record(real_url, self.live.curr_video.videoname, headers, self.check_func) 
                         
                         #Current video ends
                         if not rtncode:
@@ -145,6 +147,36 @@ class Recorder():
                 self.live.dump_record_info()
             print("[%s]Recorder Terminated Gracefully!"%self.up_name)
             
+    def check_size(self, size_limit):
+        '''
+        Return a function that returns True if video size exceeds size_limit
+        '''
+        def check_func(size, duration):
+            del duration
+            return True if size >= size_limit else False
+        return check_func
+    def check_duration(self, duration_limit):
+        '''
+        Retrun a function that returns True if the video duraction(seconds) exceeds duration_limit.
+        The duraction measure is not accurate, because it relies on how long the recording function runs. 
+        '''
+        def check_func(size, duration):
+            del size
+            return True if duration >= duration_limit else False
+        return check_func
+
+    def check_rounding_time(self, rounding):
+        '''
+        Retrun a function that returns True if the time approches the whole number of the rounding.
+        '''
+        minimum = 5
+        def check_func(size, duration):
+            del size
+            if time.time()%rounding <=minimum and duration >= minimum:
+                return True
+            else:
+                return False
+        return check_func
 
     def __post_record(self, filename, callback):
         if self._flvtag_update:

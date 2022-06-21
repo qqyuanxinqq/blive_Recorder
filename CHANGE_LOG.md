@@ -1,3 +1,6 @@
+## 06/21/2022
+Add three different video splitting methods, by size, by duration, by time rounding.
+
 ## 05/30/2022
 Add disk space management. This background thread will automatically check the usage of disk and delete the oldest video by default. 
 

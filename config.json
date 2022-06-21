@@ -4,7 +4,7 @@
         "Database": "recording_db.db",
         "_name": "_default",
         "_room_id": "",
-        "_div_size_gb": "1",
+        "_divide_video": ["size", 1],
         "_upload": 0,
         "_flvtag_update": 1,
         "_path": "Videos/",
@@ -12,41 +12,36 @@
     },
     "xiaotudou": {
         "_name": "xiaotudou",
-        "_room_id": "2096082",
-        "_div_size_gb": "1"
+        "_room_id": "2096082"
     },
     "kaofish": {
         "_name": "kaofish",
         "_room_id": "22259479",
-        "_div_size_gb": "2",
         "_upload": 0,
         "storage_stg": 2
     },
     "api": {
         "_name": "api",
         "_room_id": "92613",
-        "_div_size_gb": "2",
         "_upload": 1
     },
     "xiaofuge": {
         "_name": "xiaofuge",
-        "_room_id": "24794193",
-        "_div_size_gb": "1"
+        "_room_id": "24794193"
     },
     "naicha": {
         "_name": "naicha",
-        "_room_id": "1220",
-        "_div_size_gb": "2"
+        "_divide_video": ["duration", 120],
+        "_room_id": "1220"
     },
     "yommyko": {
         "_name": "yommyko",
-        "_room_id": "21263282",
-        "_div_size_gb": "2"
+        "_room_id": "21263282"
     },
     "test": {
         "_name": "test",
-        "_room_id": "22259479",
-        "_div_size_gb": "2"
+        "_room_id": "1220",
+        "_divide_video": ["rounding", 120]
     },
     "test2": {
         "_name": "test2",
