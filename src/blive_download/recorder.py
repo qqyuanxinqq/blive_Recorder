@@ -11,7 +11,7 @@ from typing import List, Tuple, Union
 from filelock import FileLock
 
 from ..utils import Myproc, configCheck
-from .api import get_stream_url, is_live, record_by_size, room_id, ws_open_msg
+from .api import get_stream_url, get_ws_host, is_live, record_ffmpeg, record_source, room_id, ws_open_msg
 from .flvmeta import flvmeta_update
 from .model import Live_DB, LiveManager, Video_DB, VideoManager, connect_db
 from .ws import danmu_ws
@@ -28,7 +28,7 @@ class Recorder():
             time.tzset()
         self.up_name = up_name
         self.upload_func = upload_func
-        self.record = record_by_size
+        self.record = record_ffmpeg
                 
         default_conf = configCheck()["_default"]
         self._room_id = default_conf["_room_id"]
@@ -54,7 +54,7 @@ class Recorder():
         elif self._divide_video[0] == 'rounding':
             self.check_func = self.check_rounding_time(self._divide_video[1])
         else:
-            raise Exception("_divide_video entry error!!!")
+            raise AttributeError("_divide_video entry not properly set!!!")
 
         self._room_id = room_id(self._room_id)
         
@@ -149,11 +149,11 @@ class Recorder():
             
     def check_size(self, size_limit):
         '''
-        Return a function that returns True if video size exceeds size_limit
+        Return a function that returns True if video size exceeds size_limit(Gb)
         '''
         def check_func(size, duration):
             del duration
-            return True if size >= size_limit else False
+            return True if size >= size_limit*1024*1024*1024 else False
         return check_func
     def check_duration(self, duration_limit):
         '''
@@ -188,7 +188,8 @@ class Recorder():
     
     def __run_ws(self):
         opening_msg = ws_open_msg(int(self._room_id))
-        ws = danmu_ws(opening_msg, self.live, self.engine)
+        ws_host = get_ws_host(int(self._room_id))
+        ws = danmu_ws(ws_host, opening_msg, self.live, self.engine)
         ws_thread = Thread(target=ws.run_forever)
         ws_thread.setDaemon(True)
         ws_thread.start()        

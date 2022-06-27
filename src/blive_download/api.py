@@ -1,9 +1,11 @@
+from ctypes import sizeof
 import json
 import datetime, time
 import re
 import logging
 import os
 from typing import Callable, Dict, Tuple
+from isodate import duration_isoformat
 
 import urllib3
 
@@ -43,6 +45,10 @@ def room_id(short_id):
     rtn = my_request(live_api)
     return rtn["data"]["room_id"]
 
+def get_ws_host(roomid:int) -> str:
+    ws_host_api = "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?id={}&type=0".format(roomid)
+    rtn = my_request(ws_host_api)
+    return rtn["data"]["host_list"][0]['host']
 
 def ws_key(roomid):   #return the key for websocket connection
     danmu_api = "https://api.live.bilibili.com/room/v1/Danmu/getConf?room_id={}&platform=pc&player=web".format(roomid)
@@ -84,7 +90,9 @@ def get_stream_url(uid):
                     return i.get("url"),headers
     return None, None
 
-def record_by_size(url, file_name, headers, check_func: Callable[[int, float], bool]) -> Tuple[int,int]:
+DURATION_THRESHOLD = 10
+SIZE_THRESHOLD = 1000
+def record_source(url, file_name, headers, check_func: Callable[[int, float], bool]) -> Tuple[int,int]:
     '''
     Return (status_code, size)
     '''
@@ -103,6 +111,7 @@ def record_by_size(url, file_name, headers, check_func: Callable[[int, float], b
                         preload_content=False
                         )  
     except Exception as e:
+        logging.exception(e)
         print("Failed on: ", url)
         return -1, 0
     
@@ -138,15 +147,79 @@ def record_by_size(url, file_name, headers, check_func: Callable[[int, float], b
                 if check_func(size, duration):
                     print("=============End of the video reached!==============")
                     break
-
+    duration = time.time() - start_time
     print("finnally")
     if res:
         res.release_conn()
         print("res.release_conn()")
 
-    if os.path.isfile(file_name) and os.path.getsize(file_name) == 0:
+    if not os.path.isfile(file_name):
+        return -1, 0
+    elif (os.path.getsize(file_name) <= SIZE_THRESHOLD or duration <= DURATION_THRESHOLD):
         os.remove(file_name)
-        print("os.remove({})".format(file_name))
+        print(f"os.remove({file_name})")
         return -1, 0
 
     return 0, size
+
+def record_ffmpeg(url, file_name, headers, check_func: Callable[[int, float], bool]) -> Tuple[int,int]:
+    '''
+    Record through FFmpeg. FFmpeg must be installed and accessible via the $PATH environment variable
+
+    Return (status_code, size)
+    '''
+    del headers
+
+    import subprocess
+    process = subprocess.run(['ffmpeg', '-version'], stdout= subprocess.PIPE)
+    if process.returncode:
+        raise FileNotFoundError("FFmpeg not found. FFmpeg must be installed and accessible via the $PATH environment variable")
+
+    print(f'starting FFmpeg from:\n{url}\nto:\n{file_name}', datetime.datetime.now())
+    
+    import ffmpeg
+    input = ffmpeg.input(url)
+    output = ffmpeg.output(input, file_name, acodec='copy', vcodec='copy', loglevel = 'warning')
+    # run: subprocess.Popen = output.run_async(cmd=['ffmpeg','-loglevel','quiet'])
+    run: subprocess.Popen = output.run_async()
+    try:
+        start_time = time.time()
+        now_1 = datetime.datetime.now()
+        prev_size = 0
+        while True:
+            time.sleep(2)
+            duration = time.time() - start_time
+            size = 0 if not os.path.isfile(file_name) else os.path.getsize(file_name)
+
+            
+            if run.poll() is None:
+                if check_func(size, duration):
+                    print("=============End of the video reached!==============")
+                    break
+                if size == prev_size:
+                    print("=============URL timeout!==============")
+                    break
+                if now_1 + datetime.timedelta(seconds=10) < datetime.datetime.now() :
+                    now_1=datetime.datetime.now()
+                    print('{:<4.2f} MB downloaded'.format(size/1024/1024),datetime.datetime.now())
+            else:
+                print("=============FFmpeg terminated!==============")
+                break
+            prev_size = size
+    finally:
+        run.terminate()
+    
+    
+    if not os.path.isfile(file_name):
+        return -1, 0
+    elif (os.path.getsize(file_name) <= SIZE_THRESHOLD or duration <= DURATION_THRESHOLD):
+        os.remove(file_name)
+        print(f"os.remove({file_name})")
+        return -1, 0
+
+    return 0, size
+    
+        
+    
+    
+    

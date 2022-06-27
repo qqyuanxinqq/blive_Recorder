@@ -8,10 +8,10 @@ def flvmeta(input, options="", output = ""):
     Man page for flvmeta, https://flvmeta.com/flvmeta.1.html
     '''
     if not __file__:
-        raise Exception("__file__ not set")
+        raise ImportError("__file__ not set")
     path = os.path.dirname(os.path.relpath(__file__))
     if not path:
-        raise Exception("Failed to find correct path for flvmeta")
+        raise FileNotFoundError("Failed to find correct path for flvmeta")
     cmd = [os.path.join(path, "flvmeta")]
     for i in (*options.split(" "), input, output):
         if i:

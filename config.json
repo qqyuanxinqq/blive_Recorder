@@ -40,8 +40,8 @@
     },
     "test": {
         "_name": "test",
-        "_room_id": "1220",
-        "_divide_video": ["rounding", 120]
+        "_room_id": "1163043",
+        "_divide_video": ["rounding", 3600]
     },
     "test2": {
         "_name": "test2",

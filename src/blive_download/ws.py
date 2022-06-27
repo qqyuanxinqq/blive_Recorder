@@ -349,7 +349,9 @@ class Danmu_Counter():
     def count(self, j):
         self.live_info.num_danmu_total += 1
     
-def danmu_ws(opening,live_info, engine):
+def danmu_ws(host, opening_msg,live_info, engine):
+
+
     message_handler = Message_Handler()
 
     ass_handler = Ass_Generator(live_info)
@@ -359,10 +361,12 @@ def danmu_ws(opening,live_info, engine):
     message_handler.set_handler('DANMU_MSG')(Danmu_Counter(live_info).count)
 
     message_handler.set_handler('ALL')(Danmu_To_DB(live_info, engine).danmu_handler)
+
+    print(f"wss://{host}")
    
-    ws = websocket.WebSocketApp("wss://broadcastlv.chat.bilibili.com/sub",
+    ws = websocket.WebSocketApp(f"wss://{host}/sub",
                               on_message = on_message_gen(message_handler),
                                on_error=on_error,
                                on_close=on_close)
-    ws.on_open = on_open_gen(opening)  # type: ignore
+    ws.on_open = on_open_gen(opening_msg)  # type: ignore
     return ws
