@@ -24,8 +24,8 @@ http = urllib3.PoolManager(
     timeout = 2
 )
 
-def my_request(url) -> Dict:
-    res = http.request('Get', url)
+def my_request(url, fields = None) -> Dict:
+    res = http.request('Get', url, fields = fields)
     content = res.data
     return json.loads(content.decode())
 
@@ -58,6 +58,7 @@ def ws_key(roomid):   #return the key for websocket connection
 def ws_open_msg(roomid):  #return the first message for websocket connection
     key = ws_key(roomid)
     #protocol see https://daidr.me/archives/code-526.html
+    # protover 3 is available
     ws_dict={'uid': 0, 'roomid': roomid, 'protover': 2, 'platform': 'web', 'clientver': '2.5.7', 'type': 2, 'key': key}
     bytes_3 = json.dumps(ws_dict)
     bytes_2 = '\x00\x10\x00\x01\x00\x00\x00\x07\x00\x00\x00\x01'
@@ -66,29 +67,64 @@ def ws_open_msg(roomid):  #return the first message for websocket connection
     opening = bytes_1 + bytes(bytes_2 + bytes_3, encoding='utf-8')
     return opening
 
-def get_stream_url(uid):
-    stream_api = "https://api.live.bilibili.com/room/v1/Room/playUrl?cid=%s&quality=4&platform=web"%uid  #quality=4
-    
-    rtn = my_request(stream_api)
-    urls = rtn["data"]["durl"]
+# https://github.com/biliup/biliup/commit/b6c718155d095d6306b2c85e73fb25271e8bf510
+def get_stream_url_v2(uid):
+    params = {
+        'room_id': uid,
+        'qn': '10000',
+        'platform': 'web',
+        'codec': '0,1',
+        'protocol': '0,1',
+        'format': '0,1,2',
+        'ptype': '8',
+        'dolby': '5'
+    }                    
+    res = my_request("https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo", fields=params)
+    if res['code'] != 0:
+        return None, None
+    if not res['data']['playurl_info']:
+        return None, None
 
-    retry_time= 0
-    if urls:
-        while 1:
-            for i in urls:
-                for referer in [True,False]:
-                    if retry_time >20:
-                        return None, None
-                    retry_time+=1
-                    url = i.get("url")
-                    headers = dict()
-                    headers['Accept-Encoding'] = 'identity'
-                    headers["User-Agent"] = "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.71 Safari/537.36 " 
-                    if referer == True:
-                        headers['Referer'] = re.findall(r'(https://.*\/).*\.flv', url)[0]
+    data = res['data']['playurl_info']['playurl']['stream'][0]['format'][0]['codec'][0]
+    stream_number = 0
+    if "mcdn" in data['url_info'][0]['host']:
+        stream_number += 1
+    stream_url = data['url_info'][stream_number]['host'] + data['base_url'] + data['url_info'][stream_number]['extra']
+    header = {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate',
+        'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:38.0) Gecko/20100101 Firefox/38.0 Iceweasel/38.2.1'
+    }
+    header['Referer'] = 'https://live.bilibili.com'
+    return stream_url, header
+    
+
+
+# def get_stream_url_v1(uid):
+#     stream_api = "https://api.live.bilibili.com/room/v1/Room/playUrl?cid=%s&quality=4&platform=web"%uid  #quality=4
+    
+#     rtn = my_request(stream_api)
+#     urls = rtn["data"]["durl"]
+
+#     retry_time= 0
+#     if urls:
+#         while 1:
+#             for i in urls:
+#                 for referer in [True,False]:
+#                     if retry_time >20:
+#                         return None, None
+#                     retry_time+=1
+#                     url = i.get("url")
+#                     headers = dict()
+#                     headers['Accept-Encoding'] = 'identity'
+#                     headers["User-Agent"] = "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.71 Safari/537.36 " 
+#                     if referer == True:
+#                         headers['Referer'] = re.findall(r'(https://.*\/).*\.flv', url)[0]
                     
-                    return i.get("url"),headers
-    return None, None
+#                     return i.get("url"),headers
+#     return None, None
+
 
 DURATION_THRESHOLD = 10
 SIZE_THRESHOLD = 1000

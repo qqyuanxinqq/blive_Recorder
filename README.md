@@ -53,8 +53,10 @@ https://github.com/FortuneDayssss/BilibiliUploader/issues/41
 ## 今后计划
 近期有空都会试着更新，不过个人能力很有限，有些实现可能也比较奇怪，希望大佬们多指教。
 
+- Different upload mode, e.g. appending;
+- 仅弹幕录制，Recorder基本类，Live_info serialization;  Optimize upload config format
 - 通过与内置SQLite数据库的交互，记录直播、分P、弹幕信息，并给出通用接口
-- 不同的分P条件 （固定时长分P）
+- ✓ 不同的分P条件 （固定时长分P, 整点分P，固定大小分P）
 - 保存目录的绝对地址
 - 对正在写入的视频实现上传，延后flvmeta的调用
 - 根据弹幕文件做点分析？

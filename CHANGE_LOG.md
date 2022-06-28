@@ -1,4 +1,7 @@
 ## 06/26/2022
+Change stream_url API to v2, hope the new stream_url format can fix stream download timeout.
+
+## 06/26/2022
 Add the support for FFmpeg recording.
 
 ## 06/21/2022

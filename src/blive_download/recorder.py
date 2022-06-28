@@ -11,7 +11,7 @@ from typing import List, Tuple, Union
 from filelock import FileLock
 
 from ..utils import Myproc, configCheck
-from .api import get_stream_url, get_ws_host, is_live, record_ffmpeg, record_source, room_id, ws_open_msg
+from .api import get_stream_url_v2, get_ws_host, is_live, record_ffmpeg, record_source, room_id, ws_open_msg
 from .flvmeta import flvmeta_update
 from .model import Live_DB, LiveManager, Video_DB, VideoManager, connect_db
 from .ws import danmu_ws
@@ -28,7 +28,7 @@ class Recorder():
             time.tzset()
         self.up_name = up_name
         self.upload_func = upload_func
-        self.record = record_ffmpeg
+        self.record = record_source
                 
         default_conf = configCheck()["_default"]
         self._room_id = default_conf["_room_id"]
@@ -243,7 +243,7 @@ class Recorder():
 
     def __get_stream_url(self):
         try:
-            real_url,headers = get_stream_url(self._room_id)
+            real_url,headers = get_stream_url_v2(self._room_id)
         except Exception as e:
             logging.exception(e)
             return None,None
