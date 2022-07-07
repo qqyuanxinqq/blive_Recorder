@@ -1,241 +1,171 @@
 import datetime
-import json
 import logging
 import os
 import sys
 import time
 from threading import Thread
 # import subprocess
-from typing import List, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple
 
-from filelock import FileLock
 
 from ..utils import Myproc, configCheck
-from .api import get_stream_url_v2, get_ws_host, is_live, record_ffmpeg, record_source, room_id, ws_open_msg
+from .api import get_stream_url, is_live, record_ffmpeg, record_source, room_id
 from .flvmeta import flvmeta_update
-from .model import Live_DB, LiveManager, Video_DB, VideoManager, connect_db
-from .ws import danmu_ws
+from .model import Video_DB, connect_db, Live
+from .ws import Message_Handler, WebSocketAppManager, generate_handler
 
-from .model import Video
 
-# from blive_upload import upload
-#This absolute path import requires root directory have "blive_upload" folder
 
 class Recorder():
-    def __init__(self, up_name, upload_func =None):
-        os.environ['TZ'] = 'Asia/Shanghai'
-        if os.name != 'nt':
-            time.tzset()
+    '''
+    Init by config file By_config(upname:str)
+    Init by construction, mannually, support by silence()
+    For given Recorder setting, By_input(upname:str, live_dir:str, room_id)
+
+    How to set a recorder and reuse it for different rooms?
+        Custom on instance seems not working
+
+    '''
+
+    REQUIRED_KEY = [
+        "room_id",
+        "divide_video",
+        "flvtag_update",
+        "upload_flag", 
+        "path",
+        "storage_stg",
+    ]
+
+    room_id: int
+    divide_video: Tuple[str,float]
+    upload_flag: int
+    flvtag_update: int
+    path: str
+    storage_stg: int
+
+    database: Optional[str] 
+    upload_func: Optional[Callable]
+
+    live_dir: str
+    live_status: bool
+    live : Live
+    engine : Any
+    ws_manage: WebSocketAppManager
+    
+    record_check: Callable[[int, float], int]
+    record: Callable
+
+    def __init__(self, up_name:str) -> None:
         self.up_name = up_name
-        self.upload_func = upload_func
-        self.record = record_source
+        self.callback_list:List[Callable[[Video_DB],None]] = [
+            flvmeta,
+            self.dump_video_json
+        ]
+        self.threads = []
+
+    def init_from_json(self, config_file:str , upload_func =None):
+        self.upload_func = upload_func   #Think about how to pass this
+
+        self.record = record_source     #Think about how to pass this
                 
-        default_conf = configCheck()["_default"]
-        self._room_id = default_conf["_room_id"]
-        self._divide_video = default_conf["_divide_video"]
-        self._flvtag_update = default_conf["_flvtag_update"]
-        self._upload = default_conf["_upload"]
-        self._path = default_conf["_path"]
+        default_conf = configCheck(configpath= config_file)
+        self.room_id = default_conf["room_id"]
+        self.divide_video = default_conf["divide_video"]
+        self.flvtag_update = default_conf["flvtag_update"]
+        self.upload_flag = default_conf["upload_flag"]
+        self.path = default_conf["path"]
         self.storage_stg = default_conf["storage_stg"]
         
-        self.database = default_conf.get("Database")
-        self.engine = connect_db(self.database)
-        self.live_manager = LiveManager(self.engine)
-        self.video_manager = VideoManager(self.engine)
-        conf = configCheck(up_name = up_name)[self.up_name]
-        for key in conf:
-            setattr(self, key, conf[key])
-
-        self.live_dir = os.path.join(self._path, up_name)
-        if self._divide_video[0] == 'size':
-            self.check_func = self.check_size(self._divide_video[1])
-        elif self._divide_video[0] == 'duration':
-            self.check_func = self.check_duration(self._divide_video[1])
-        elif self._divide_video[0] == 'rounding':
-            self.check_func = self.check_rounding_time(self._divide_video[1])
-        else:
-            raise AttributeError("_divide_video entry not properly set!!!")
-
-        self._room_id = room_id(self._room_id)
+        self.database = default_conf.get("Database")  
+        conf = configCheck(configpath= config_file, up_name = self.up_name)
         
-        if self._upload == 1:
-            #username/password or token file needed
+        for key in Recorder.REQUIRED_KEY:
+            if key in conf:
+                setattr(self, key, conf[key])
+
+        print(f"Record from live room {self.room_id}")
+        print(f"Split videos by {self.divide_video}")
+        if self.upload_flag == 1:
             print("自动上传已启用")
         else:
             print("自动上传未启用")
-
+        
+        print("Flvmeta Mode:", self.flvtag_update)
         print("Storage Mode:", self.storage_stg)
-
+        
+        print("[%s]Recorder loaded"%self.up_name,datetime.datetime.now(), flush=True)
         sys.stdout.flush()
 
+    def check(self):
+        '''
+        Check if all necessary components are set, and preset all relavant components
+        '''
+        for key in Recorder.REQUIRED_KEY:
+            if not hasattr(self, key):
+                raise Exception(f"Attribute {key} is not properly set")
+        
         self.live_status = False
-        print("[%s]Recorder loaded"%self.up_name,datetime.datetime.now(), flush=True)
-   
-    def recording(self):
-        try: 
-            while 1:
-                while not self.__check_live_status():
-                    print("[%s]未开播"%self._room_id,datetime.datetime.now(), flush=True)
-                    time.sleep(35)
+        self.room_id = room_id(self.room_id)
+        self.live_dir = os.path.join(self.path, self.up_name)
+        os.makedirs(self.live_dir, exist_ok = True)
 
-                #Information about this live
-                self.live = Live(self.engine, self.up_name,self.live_dir, self._room_id)
-                self.live_manager.update_live(self.live.live_DB)
+        if self.divide_video[0] == 'size':
+            self.record_check = check_size(self.divide_video[1])
+        elif self.divide_video[0] == 'duration':
+            self.record_check = check_duration(self.divide_video[1])
+        elif self.divide_video[0] == 'rounding':
+            self.record_check = check_rounding_time(self.divide_video[1])
+        else:
+            raise AttributeError("_divide_video entry not properly set!!!")
 
-                threads = []
-                
-                self.live.dump_record_info()
-                # Setup  ws_checking_loop
-                ws_thread = Thread(target=self.check_ws_loop)
-                ws_thread.daemon = True
-                ws_thread.start()    
+        if self.database:
+            self.engine = connect_db(self.database) #type:ignore
+            print(f"Connected to {self.database} database")
+        else:
+            self.engine = None
+            print("No database provided")
 
-                #Init upload process  
-                if self._upload == 1:
-                    self.upload(self.live.record_info)
-                
-                try:
-                    #Record this live
-                    while self.__check_live_status() == True:                   
-                        real_url,headers = self.__get_stream_url()
-                        if real_url == None:
-                            print("开播了但是没有源")
-                            time.sleep(5)
-                            continue
-                        
-                        #New video starts
-                        self.live.curr_video = self.live.init_video()
-                        self.video_manager.update_videos([self.live.curr_video]) 
-
-                        ass_gen(self.live.curr_video.ass_name) 
-
-                        rtncode, video_size = self.record(real_url, self.live.curr_video.videoname, headers, self.check_func) 
-                        
-                        #Current video ends
-                        if not rtncode:
-                            self.live.finalize_video(True, int(time.time()), video_size, self.storage_stg)
-                            self.video_manager.update_videos([self.live.curr_video]) 
-                            #Modify recorded video and dump updated record_info
-                            self.live.dump_record_info()
-                            t_post_record = Thread(target=self.__post_record, args=(self.live.curr_video.videoname, self.live.append_curr_video), name=self.live.curr_video.videoname)  # type: ignore
-                            t_post_record.start()
-                            threads.append(t_post_record)
-                        else:
-                            print("record failed on {}".format(self.live.curr_video.videoname))
-                            self.live.finalize_video(False, int(time.time()), 0, self.storage_stg)
-                            self.video_manager.update_videos([self.live.curr_video]) 
-                        print("Total number of danmu so far is : ", self.live.num_danmu_total, datetime.datetime.now())
-
-                    #When live ends
-                    self.live.end_time = int(time.time()) 
-                    self.live.update_live_DB()
-                    self.live_manager.update_live(self.live.live_DB)
-
-                except Exception as e:
-                    logging.exception(e)
-                while threads:
-                    threads.pop().join()
-                time.sleep(10)
-
-                self.live.record_info['Status'] = "Done"
-                self.live.dump_record_info()
-                print("Live Done ",datetime.datetime.now(), flush = True)
+    def run(self):
+        os.environ['TZ'] = 'Asia/Shanghai'
+        if os.name != 'nt':
+            time.tzset()
+        self.check()
+        try:
+            self.recording()
+        except Exception as e:
+            logging.exception(e)
         finally:
             if hasattr(self,"live"):
                 # self.__post_record
-                self.live.record_info['Status'] = "Done"
-                self.live.dump_record_info()
+                self.__new_live_finalize(fail = True)
             print("[%s]Recorder Terminated Gracefully!"%self.up_name)
-            
-    def check_size(self, size_limit):
-        '''
-        Return a function that returns True if video size exceeds size_limit(Gb)
-        '''
-        def check_func(size, duration):
-            del duration
-            return True if size >= size_limit*1024*1024*1024 else False
-        return check_func
-    def check_duration(self, duration_limit):
-        '''
-        Retrun a function that returns True if the video duraction(seconds) exceeds duration_limit.
-        The duraction measure is not accurate, because it relies on how long the recording function runs. 
-        '''
-        def check_func(size, duration):
-            del size
-            return True if duration >= duration_limit else False
-        return check_func
 
-    def check_rounding_time(self, rounding):
-        '''
-        Retrun a function that returns True if the time approches the whole number of the rounding.
-        '''
-        minimum = 5
-        def check_func(size, duration):
-            del size
-            if time.time()%rounding <=minimum and duration >= minimum:
-                return True
-            else:
-                return False
-        return check_func
+    def __new_live_init(self) -> None:
+        self.live = Live(online = bool(self.database), engine = self.engine)
+        self.live.from_new(self.up_name,self.room_id, self.live_dir)     
+        
+        self.ws_manage = WebSocketAppManager(self.room_id)
+        self.ws_manage.handler = generate_handler(self.live)
+        self.ws_manage.run_ws_recon_thread()
 
-    def __post_record(self, filename, callback):
-        if self._flvtag_update:
-            print("==========Flvmeta============\n", filename, flush = True)
-            rtn = flvmeta_update(filename)
-            print("==========Flvmeta============\n", rtn, flush = True)
-            
-        callback(filename)
-    
-    def __run_ws(self):
-        opening_msg = ws_open_msg(int(self._room_id))
-        ws_host = get_ws_host(int(self._room_id))
-        ws = danmu_ws(ws_host, opening_msg, self.live, self.engine)
-        ws_thread = Thread(target=ws.run_forever)
-        ws_thread.setDaemon(True)
-        ws_thread.start()        
-        return ws, ws_thread
-
-    def check_ws_loop(self):
-        '''
-        Loop for checking ws status, effective only when live is still on
-        '''
-        ws, ws_thread = self.__run_ws()
-        while True:
-            if not ws_thread.is_alive():
-                print("WS has been terminated somehow! Restart WS!")
-                ws, ws_thread = self.__run_ws()
-            
-            if self.live.end_time:
-                ws.close()
-                break
-            time.sleep(1)
-        return
-
-    def upload(self, record_info):
-        if self.upload_func:
-            upload_log_dir = os.path.join(self.live_dir,"upload_log")
-            os.makedirs(upload_log_dir, exist_ok = True)
-            logfile = os.path.join(upload_log_dir , record_info.get('time') + '.log')
-
-            #Uploading process runs at blive_upload directory
-            # p = subprocess.Popen(['nohup python3 -u ./blive_upload/{}.py {} > {} 2>&1  & echo $! > {}'.format(\
-            # self.up_name,record_info.get('filename'), logfile, logfile)],\
-            # shell=True)
-            p = Myproc(target = self.upload_func, args = (record_info.get('filename'),), name="[{}]Uploader".format(self.up_name))
-            p.set_output(logfile)
-            p.start()
-            p.post_run()
-            print("=============================")
-            print("开始上传"+record_info.get('filename'))
-            print("=============================")
-        else:
-            print("=============================")
-            print("No upload function provided")
-            print("=============================")
+        self.live.set_record_info()
+        self.live.dump_json()
+        self.threads = []
+    def __new_live_finalize(self, fail = False):
+        if not fail:
+            self.live.from_new_finalize(int(time.time())) 
+            while self.threads:
+                self.threads.pop().join()
+            time.sleep(10)
+  
+        self.ws_manage.maintain_ws = False
+        self.live.json_live_end()
+        self.live.dump_json()
+        print("Live Done ",datetime.datetime.now(), flush = True)
 
     def __check_live_status(self):
         try:
-            self.live_status = is_live(self._room_id)
+            self.live_status = is_live(self.room_id)
         except Exception as e:
             logging.exception(e)
 
@@ -243,169 +173,131 @@ class Recorder():
 
     def __get_stream_url(self):
         try:
-            real_url,headers = get_stream_url_v2(self._room_id)
+            real_url = get_stream_url(self.room_id)
         except Exception as e:
             logging.exception(e)
-            return None,None
-        return real_url,headers
+            return None
+        return real_url
 
+    def __init_new_video(self) -> str:
+        '''
+        Generate the file name for the new video, as well as other initilization for the new video piece.
+        '''
+        #New video starts
+        self.live.init_video()
+        assert self.live.curr_video
 
-    # def set_record_info(self):
-    #     now = self.time_create
-    #     self.record_info = {'year':now.strftime("%Y"),
-    #         'month':now.strftime("%m"),
-    #         'day':now.strftime("%d"),
-    #         'hour':now.strftime("%H"),
-    #         'time_format':TIMEFORMAT,
-    #         'time':now.strftime(TIMEFORMAT),
-    #         #Absolute path for record info file
-    #         'filename':os.path.abspath(os.path.join(self.record_info_dir, self.up_name+ now.strftime(TIMEFORMAT+".json"))),
-    #         'videolist':[],
-    #         'up_name': self.up_name,
-    #         #Absolute path for video directory
-    #         'directory': os.path.abspath(self.live_dir),
-    #         'Status':"Living"
-    #         }
+        return self.live.curr_video.videoname
 
-
-TIMEFORMAT = "_%Y%m%d_%H-%M-%S"
-
-# class Live2(Live_DB):
-#     def update_live_DB(self):
-#         self.nickname = self.up_name
-#         self.room_id = self.room_id
-#         self.start_time = int(self.time_create.timestamp())  # type: ignore
-#         self.end_time = self.end_time  # type: ignore
-#         if self.end_time:
-#             self.live_DB.duration = self.end_time-self.live_DB.start_time
-#         self.live_manager.update_live(self.live_DB)
-
-
-class Live():
-    video_info_dir = "video_list"
-
-    def __init__(self, engine, up_name,live_dir, roomid):
-        self.live_dir = live_dir
-        self.record_info_dir = os.path.join(self.live_dir, self.video_info_dir)
-        os.makedirs(self.record_info_dir , exist_ok = True)
+    def __finalize_new_video(self, rtncode,video_size):
+        assert self.live.curr_video
+        if not rtncode:
+            #Modify recorded video and dump updated record_info
+            self.live.finalize_video(True, int(time.time()), video_size, self.storage_stg)
+            
+            t_post_record = Thread(target=self.__post_record, args=(self.live.curr_video,), name=self.live.curr_video.videoname) 
+            t_post_record.start()
+            self.threads.append(t_post_record)
+        else:
+            print("record failed on {}".format(self.live.curr_video.videoname))
+            self.live.finalize_video(False, int(time.time()), 0, self.storage_stg)
         
-        self.up_name = up_name
-        self.room_id = roomid
-        self.time_create = datetime.datetime.now()
-        self.end_time: Union[None, int] = None
-        self.set_record_info()
+    def __post_record(self, video_db:Video_DB):
+        for callback in self.callback_list:
+            callback(video_db)
+
+    def recording(self):
+        while True:
+            while not self.__check_live_status():
+                print("[%s]未开播"%self.room_id,datetime.datetime.now(), flush=True)
+                time.sleep(35)
+
+            self.__new_live_init()
+            
+            #Init upload process  
+            if self.upload_flag == 1:
+                self.__upload()
         
-        self.live_DB = Live_DB()
-        self.update_live_DB()
+            #Record this live
+            while self.__check_live_status() == True:                   
+                real_url = self.__get_stream_url()
+                if real_url == None:
+                    print("开播了但是没有源")
+                    time.sleep(5)
+                    continue
+                video_file = self.__init_new_video()
+                rtncode, video_size = self.record(real_url, video_file, self.record_check) 
+                self.__finalize_new_video(rtncode,video_size)
+            self.__new_live_finalize()
 
-        #curr_video needs to be initialized for websocket app works properly
-        self.curr_video : Video = self.init_video()      
+    def __upload(self):
+        if not self.upload_func:
+            print("=============================")
+            print("No upload function provided")
+            print("=============================")
+        elif self.live.json_file is None:
+            print("=============================")
+            print("self.live.json_file provided as None")
+            print("=============================")
+        else:
+            upload_log_dir = os.path.join(self.live_dir,"upload_log")
+            os.makedirs(upload_log_dir, exist_ok = True)
+            logfile = os.path.join(
+                upload_log_dir, 
+                self.live.live_db.time_create.strftime(self.live.TIMEFORMAT) + '.log'
+                )
+            #Uploading process runs at blive_upload directory
+            # p = subprocess.Popen(['nohup python3 -u ./blive_upload/{}.py {} > {} 2>&1  & echo $! > {}'.format(\
+            # self.up_name,record_info.get('filename'), logfile, logfile)],\
+            # shell=True)
+            p = Myproc(target = self.upload_func, args = (self.live.json_file,), name="[{}]Uploader".format(self.up_name))
+            p.set_output(logfile)
+            p.start()
+            p.post_run()
+            print("=============================")
+            print("开始上传"+ self.live.json_file)
+            print("=============================")
 
-        self.num_danmu_total = 0
-        
-
-    def update_live_DB(self):
-        self.live_DB.nickname = self.up_name
-        self.live_DB.room_id = self.room_id
-        self.live_DB.start_time = int(self.time_create.timestamp())  # type: ignore
-        self.live_DB.end_time = self.end_time  # type: ignore
-        if self.end_time:
-            self.live_DB.duration = self.end_time-self.live_DB.start_time
-
-    def init_video(self):
-        video = Video()
-        video.time_create = datetime.datetime.now()
-        video.up_name = self.up_name
-        video.live_dir = self.live_dir
-        video.filename = os.path.join(self.live_dir, self.up_name + video.time_create.strftime(TIMEFORMAT))
-        video.videoname = video.filename +".flv"  # type: ignore
-        video.ass_name = video.filename + ".ass"        
-        video.danmu_end_time = [datetime.timedelta(seconds=0)]
-        video.live_id = self.live_DB.live_id
-        video.start_time = int(video.time_create.timestamp()) # type: ignore
-        video.is_live = True  # type: ignore
-        video.is_stored = False  # type: ignore
-        return video
-    
-    def finalize_video(self, is_stored, end_time, size, storage_stg):
-        self.curr_video.end_time = end_time # type: ignore
-        self.curr_video.duration = end_time - self.curr_video.start_time    # type: ignore
-        self.curr_video.size = size     # type: ignore
-        self.curr_video.is_live = False  # type: ignore
-        self.curr_video.is_stored = True  # type: ignore
-        self.curr_video.deletion_type = storage_stg
-        
-
-
-    def set_record_info(self):
-        now = self.time_create
-        self.record_info = {'year':now.strftime("%Y"),
-            'month':now.strftime("%m"),
-            'day':now.strftime("%d"),
-            'hour':now.strftime("%H"),
-            'time_format':TIMEFORMAT,
-            'time':now.strftime(TIMEFORMAT),
-            #Absolute path for record info file
-            'filename':os.path.abspath(os.path.join(self.record_info_dir, self.up_name+ now.strftime(TIMEFORMAT+".json"))),
-            'videolist':[],
-            'up_name': self.up_name,
-            #Absolute path for video directory
-            'directory': os.path.abspath(self.live_dir),
-            'Status':"Living"
-            }
-    def dump_record_info(self):
-        filename = self.record_info['filename']
-        with FileLock(filename+".lock"):
-            with open(filename, 'w') as f:
-                json.dump(self.record_info, f, indent=4) 
-    
-    def append_curr_video(self, videoname):
-        self.record_info['videolist'].append(os.path.basename(videoname))
-        print("{} appended to record info".format(videoname))
-        self.dump_record_info()
+    def dump_video_json(self,video_db: Video_DB):
+        self.live.json_append_video(video_db)
+        self.live.dump_json()
 
 
-    def danmu_rate(self, duration):
-        prev_num = self.num_danmu_total
-        time.sleep(duration)
-        curr_num = self.num_danmu_total
-        return curr_num - prev_num
+def flvmeta(video_db:Video_DB):
+    filename = video_db.videoname
+    print("==========Flvmeta============\n", filename, flush = True)
+    rtn = flvmeta_update(filename)
+    print("==========Flvmeta============\n", rtn, flush = True)
 
 
-    # def init(self, up_name: str, live_dir: str):
-    #     self.time_create = datetime.datetime.now()
-    #     self.up_name = up_name
-    #     self.live_dir = live_dir
-    #     self.filename = os.path.join(live_dir, up_name + self.time_create.strftime(TIMEFORMAT))
-    #     self.videoname = self.filename +".flv"
-    #     self.ass_name = self.filename + ".ass"        
-    #     self.danmu_end_time = [datetime.timedelta(seconds=0)]     
+def check_size(size_limit):
+    '''
+    Return a function that returns True if video size exceeds size_limit(Gb)
+    '''
+    def check_func(size, duration):
+        del duration
+        return True if size >= size_limit*1024*1024*1024 else False
+    return check_func
+def check_duration(duration_limit):
+    '''
+    Retrun a function that returns True if the video duraction(seconds) exceeds duration_limit.
+    The duraction measure is not accurate, because it relies on how long the recording function runs. 
+    '''
+    def check_func(size, duration):
+        del size
+        return True if duration >= duration_limit else False
+    return check_func
 
-def ass_gen(ass_name):
-    if os.path.exists(ass_name) == False:
-        ass_head ='''\
-[Script Info]
-Title: blive_Recorder danmu generator
-ScriptType: v4.00+
-Collisions: Normal
-PlayResX: 1280
-PlayResY: 720
-Timer: 10.0000
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Fix,Microsoft YaHei UI,25,&H00FFFFFF,&H00FFFFFF,&H00000000,&H66000000,1,0,0,0,100,100,0,0,1,1,0,8,20,20,2,0
-Style: R2L,Microsoft YaHei UI,25,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,1,0,8,20,20,2,0
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:00.08,0:00:10.08,R2L,,20,20,2,,{\pos(384,0)}Danmu Record Start
-'''
-        with open (ass_name,"x",encoding='UTF-8') as f_ass:
-            f_ass.write(ass_head)  
-
-
-
-
-
+def check_rounding_time(rounding):
+    '''
+    Retrun a function that returns True if the time approches the whole number of the rounding.
+    '''
+    minimum = 5
+    def check_func(size, duration):
+        del size
+        if time.time()%rounding <=minimum and duration >= minimum:
+            return True
+        else:
+            return False
+    return check_func
 
