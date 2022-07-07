@@ -28,13 +28,14 @@ class StorageManager():
     def __init__(self, path, engine) -> None:
         self.path = path
         self.engine = engine
-        self.video_manager = VideoManager(self.engine)
+        self.video_manager = VideoManager(engine = self.engine)
         self.modified_videos : Set[Video_DB]= set()
         self.deleted_size = 0
     
 
     def delete_video(self, video: Video_DB):
         _remove(video.videoname)
+        _remove(video.subtitle_file)
         video.is_stored = False # type: ignore
         self.modified_videos.add(video)
         self.deleted_size += video.size

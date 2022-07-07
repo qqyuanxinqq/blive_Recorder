@@ -434,6 +434,7 @@ def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5
 
     pre_upload_data = r.json()
     upload_url = pre_upload_data['url']
+    print(f"Upload to \n {upload_url}")
     complete_upload_url = pre_upload_data['complete']
     server_file_name = pre_upload_data['filename']
     local_file_name = video_part.path

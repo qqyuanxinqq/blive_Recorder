@@ -14,24 +14,23 @@ from ..utils import Myproc
 # from blive_upload import upload
 #This absolute path import requires root directory have "blive_upload" folder
 
-
 LOG_PATH = "logs"
 
-
 class App():
-    def __init__(self, upload_func):
+    def __init__(self, upload_func, configpath):
         self.upload_func = upload_func
+        self.configpath = configpath
         
         self.time_create = datetime.datetime.now()
         self.recorders = {}
         self.engine = None
 
-        self.conf = configCheck()
+        self.conf = configCheck(configpath)
         self.database = self.conf["_default"].get("Database")
         self.engine = connect_db(self.database)
 
         self.storage_manager = StorageManager(self.conf["_default"]["_path"], self.engine)
-        self.recorder_manager = RecorderManager(self.engine)
+        self.recorder_manager = RecorderManager(engine = self.engine)
 
         os.makedirs(LOG_PATH, exist_ok = True)
 
@@ -59,7 +58,7 @@ class App():
             recorder_enabled = self.conf.keys()
 
         t = Thread(target = self.storage_manager.loop)
-        t.setDaemon(True)
+        t.daemon = True
         t.start()
 
         try:
@@ -106,13 +105,11 @@ class App():
             
             print("Exit Successfully!")
 
-
-    
     def handle_stopped(self, up_name):
         self.recorders.pop(up_name)
 
     def prep_record_Process(self, up_name) :
-        p = Myproc(target = self.run_recorder, args=(up_name, self.upload_func), name = "[{}]Recorder".format(up_name))
+        p = Myproc(target = self.run_recorder, args=(up_name, self.configpath, self.upload_func), name = "[{}]Recorder".format(up_name))
         logfile = os.path.join(LOG_PATH, up_name + self.time_create.strftime("_%Y%m%d_%H-%M-%S") + '.log')
         p.set_output(logfile)
         return p
@@ -129,6 +126,7 @@ class App():
         return
 
     @staticmethod
-    def run_recorder(up_name, upload_func):
-        recorder = Recorder(up_name, upload_func)
-        recorder.recording()
+    def run_recorder(up_name, configpath, upload_func):
+        recorder = Recorder(up_name)
+        recorder.init_from_json(configpath, upload_func)
+        recorder.run()

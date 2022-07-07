@@ -68,3 +68,4 @@ class RecorderManager(TableManager):
                 values({"pid": pid})
                 )
             return result.rowcount
+

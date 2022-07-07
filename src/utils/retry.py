@@ -27,7 +27,7 @@ class Retry:
                 print("================================")
                 print(datetime.datetime.now())
                 print("Exceptions in trial {}/{} :".format(i+1,self.max_retry), e, flush=True)
-                # logging.exception(e)
+                logging.exception(e)
                 sleep(self.interval)
 
         return status

@@ -1,20 +1,18 @@
 # pylint: disable=no-member
 
-import datetime
 from typing import Iterable, List
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from .db import Live_DB, TableManager, Video_DB
 from ...utils import Retry
 
-class Video(Video_DB):
-    time_create: datetime.datetime
-    up_name: str
-    live_dir: str
-    filename: str
-    ass_name: str
-    danmu_end_time: List[datetime.timedelta]
-
+# class Video_DB(Video_DB):
+#     time_create: datetime.datetime
+#     up_name: str
+#     live_dir: str
+#     filename: str
+#     ass_name: str
+#     danmu_end_time: List[datetime.timedelta]
 
 class VideoManager(TableManager):
     @Retry(max_retry = 5, interval = 10).decorator

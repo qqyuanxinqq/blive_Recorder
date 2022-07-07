@@ -1,11 +1,9 @@
-from ctypes import sizeof
 import json
 import datetime, time
 import re
 import logging
 import os
-from typing import Callable, Dict, Tuple
-from isodate import duration_isoformat
+from typing import Callable, Dict, Optional, Tuple
 
 import urllib3
 
@@ -39,6 +37,8 @@ def is_live(roomid):
         return False
     elif live_status == 1:
         return True
+    else:
+        raise Exception(f"live_status as {live_status}, not 0,1,2")
 
 def room_id(short_id):
     live_api = "https://api.live.bilibili.com/room/v1/Room/room_init?id=%s"%str(short_id)
@@ -67,8 +67,8 @@ def ws_open_msg(roomid):  #return the first message for websocket connection
     opening = bytes_1 + bytes(bytes_2 + bytes_3, encoding='utf-8')
     return opening
 
-# https://github.com/biliup/biliup/commit/b6c718155d095d6306b2c85e73fb25271e8bf510
-def get_stream_url_v2(uid):
+# https://github.com/biliup/biliup/blob/b6c718155d095d6306b2c85e73fb25271e8bf510/biliup/plugins/bilibili.py
+def get_stream_url(uid) -> Optional[str]:
     params = {
         'room_id': uid,
         'qn': '10000',
@@ -81,54 +81,29 @@ def get_stream_url_v2(uid):
     }                    
     res = my_request("https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo", fields=params)
     if res['code'] != 0:
-        return None, None
+        return None
     if not res['data']['playurl_info']:
-        return None, None
+        return None
 
     data = res['data']['playurl_info']['playurl']['stream'][0]['format'][0]['codec'][0]
     stream_number = 0
     if "mcdn" in data['url_info'][0]['host']:
         stream_number += 1
-    stream_url = data['url_info'][stream_number]['host'] + data['base_url'] + data['url_info'][stream_number]['extra']
-    header = {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Encoding': 'gzip, deflate',
-        'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3',
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:38.0) Gecko/20100101 Firefox/38.0 Iceweasel/38.2.1'
-    }
-    header['Referer'] = 'https://live.bilibili.com'
-    return stream_url, header
+    stream_url:str = data['url_info'][stream_number]['host'] + data['base_url'] + data['url_info'][stream_number]['extra']
+    return stream_url
     
-
-
-# def get_stream_url_v1(uid):
-#     stream_api = "https://api.live.bilibili.com/room/v1/Room/playUrl?cid=%s&quality=4&platform=web"%uid  #quality=4
-    
-#     rtn = my_request(stream_api)
-#     urls = rtn["data"]["durl"]
-
-#     retry_time= 0
-#     if urls:
-#         while 1:
-#             for i in urls:
-#                 for referer in [True,False]:
-#                     if retry_time >20:
-#                         return None, None
-#                     retry_time+=1
-#                     url = i.get("url")
-#                     headers = dict()
-#                     headers['Accept-Encoding'] = 'identity'
-#                     headers["User-Agent"] = "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.71 Safari/537.36 " 
-#                     if referer == True:
-#                         headers['Referer'] = re.findall(r'(https://.*\/).*\.flv', url)[0]
-                    
-#                     return i.get("url"),headers
-#     return None, None
-
 
 DURATION_THRESHOLD = 10
 SIZE_THRESHOLD = 1000
-def record_source(url, file_name, headers, check_func: Callable[[int, float], bool]) -> Tuple[int,int]:
+RECORD_HEADER = {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Encoding': 'gzip, deflate',
+    'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3',
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:38.0) Gecko/20100101 Firefox/38.0 Iceweasel/38.2.1',
+    'Referer': 'https://live.bilibili.com'
+}
+
+def record_source(url, file_name, check_func: Callable[[int, float], bool]) -> Tuple[int,int]:
     '''
     Return (status_code, size)
     '''
@@ -141,7 +116,7 @@ def record_source(url, file_name, headers, check_func: Callable[[int, float], bo
         res = http.request(
                         'Get', 
                         url, 
-                        headers=headers,
+                        headers=RECORD_HEADER,
                         retries = urllib3.Retry(total = retry_num, backoff_factor = 0.2),
                         timeout = timeout,
                         preload_content=False
@@ -198,14 +173,12 @@ def record_source(url, file_name, headers, check_func: Callable[[int, float], bo
 
     return 0, size
 
-def record_ffmpeg(url, file_name, headers, check_func: Callable[[int, float], bool]) -> Tuple[int,int]:
+def record_ffmpeg(url, file_name, check_func: Callable[[int, float], bool]) -> Tuple[int,int]:
     '''
     Record through FFmpeg. FFmpeg must be installed and accessible via the $PATH environment variable
 
     Return (status_code, size)
     '''
-    del headers
-
     import subprocess
     process = subprocess.run(['ffmpeg', '-version'], stdout= subprocess.PIPE)
     if process.returncode:

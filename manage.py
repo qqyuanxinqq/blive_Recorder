@@ -2,10 +2,12 @@ from src.blive_download.model import connect_db, RecorderManager, VideoManager
 from src.utils import configCheck
 
 
-conf = configCheck()
+CONFIG_PATH = "config.json"
+
+conf = configCheck(CONFIG_PATH)
 engine = connect_db(conf["_default"]["Database"])
-recorderM = RecorderManager(engine)
-videoM = VideoManager(engine)
+recorderM = RecorderManager(engine = engine)
+videoM = VideoManager(engine = engine)
 
 def add_task(up_name):
     recorderM.add_task(up_name)

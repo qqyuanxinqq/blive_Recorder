@@ -1,56 +1,56 @@
 {
     "_default": {
-        "Enabled_recorder": ["kaofish","xiaotudou","naicha","yommyko","api", "yoshino"],
-        "Database": "recording_db.db",
-        "_name": "_default",
-        "_room_id": "",
-        "_divide_video": ["size", 1],
-        "_upload": 0,
-        "_flvtag_update": 1,
-        "_path": "Videos/",
+        "Enabled_recorder": ["test","test2"],
+        "Database": "",
+        "name": "_default",
+        "room_id": "",
+        "divide_video": ["size", 1],
+        "upload_flag": 0,
+        "flvtag_update": 1,
+        "path": "Videos/",
         "storage_stg": 0
     },
     "xiaotudou": {
-        "_name": "xiaotudou",
-        "_room_id": "2096082"
+        "name": "xiaotudou",
+        "room_id": "2096082"
     },
     "kaofish": {
-        "_name": "kaofish",
-        "_room_id": "22259479",
-        "_upload": 0,
+        "name": "kaofish",
+        "room_id": "22259479",
+        "upload": 0,
         "storage_stg": 2
     },
     "api": {
-        "_name": "api",
-        "_room_id": "92613",
-        "_upload": 1
+        "name": "api",
+        "room_id": "92613",
+        "upload": 1
     },
     "xiaofuge": {
-        "_name": "xiaofuge",
-        "_room_id": "24794193"
+        "name": "xiaofuge",
+        "room_id": "24794193"
     },
     "naicha": {
-        "_name": "naicha",
-        "_divide_video": ["duration", 120],
-        "_room_id": "1220"
+        "name": "naicha",
+        "divide_video": ["duration", 120],
+        "room_id": "1220"
     },
     "yommyko": {
-        "_name": "yommyko",
-        "_room_id": "21263282"
+        "name": "yommyko",
+        "room_id": "21263282"
     },
     "test": {
-        "_name": "test",
-        "_room_id": "5229",
-        "_divide_video": ["rounding", 30]
+        "name": "test",
+        "room_id": "22259479",
+        "divide_video": ["rounding", 30]
     },
     "test2": {
-        "_name": "test2",
-        "_room_id": "22259479",
-        "_div_size_gb": "2"
+        "name": "test2",
+        "room_id": "6750632",
+        "divide_video": ["rounding", 30]
     },
     "yoshino": {
-        "_name": "yoshino",
-        "_room_id": "83068",
-        "_div_size_gb": "2"
+        "name": "yoshino",
+        "room_id": "83068",
+        "div_size_gb": "2"
     }
 }
