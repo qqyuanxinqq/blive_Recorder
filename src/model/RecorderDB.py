@@ -7,7 +7,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from .db import Recorder_DB, TableManager
-from ...utils import Retry
+from ..utils import Retry
 
 class RecorderManager(TableManager):
     @Retry(max_retry = 5, interval = 10).decorator

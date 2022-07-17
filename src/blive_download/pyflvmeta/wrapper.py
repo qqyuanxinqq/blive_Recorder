@@ -1,5 +1,5 @@
 import subprocess
-import os.path
+import os
 import logging
 
 def flvmeta(input, options="", output = ""):
@@ -12,11 +12,13 @@ def flvmeta(input, options="", output = ""):
     path = os.path.dirname(os.path.relpath(__file__))
     if not path:
         raise FileNotFoundError("Failed to find correct path for flvmeta")
-    cmd = [os.path.join(path, "flvmeta")]
+    binary_file = "flvmeta.exe" if os.name =='nt' else "flvmeta"
+    cmd = [os.path.join(path, binary_file)]
     for i in (*options.split(" "), input, output):
         if i:
             cmd.append(i)
     try:
+        logging.info(cmd)
         rtn = subprocess.run(cmd, capture_output=True)
         if rtn.returncode:
             return rtn.returncode,rtn.stderr.decode("utf-8")

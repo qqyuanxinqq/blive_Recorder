@@ -4,7 +4,7 @@ from typing import Iterable, List
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from .db import Live_DB, TableManager, Video_DB
-from ...utils import Retry
+from ..utils import Retry
 
 # class Video_DB(Video_DB):
 #     time_create: datetime.datetime

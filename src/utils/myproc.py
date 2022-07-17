@@ -44,7 +44,7 @@ class Myproc(get_context('spawn').Process):
         t = Thread(target = self._post_run)
         t.start()
         
-    def set_output(self,logfile):
+    def set_output_err(self,logfile):
         self.logfile = logfile
 
     def set_path(self,path):

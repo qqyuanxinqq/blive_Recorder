@@ -1,4 +1,5 @@
 # pylint: disable=no-member
+import os
 from typing import Any, Dict, Optional, Union, List
 import datetime
 from sqlalchemy import ForeignKey, Column, Integer, String, Boolean
@@ -8,7 +9,7 @@ from sqlalchemy.orm import relationship
 
 mapper_registry = registry()
 Base = mapper_registry.generate_base()
-from ...utils import Retry
+from ..utils import Retry
 
 class Recorder_DB(Base):  # type: ignore
     __tablename__ = 'Up_name'
@@ -36,10 +37,9 @@ class Live_DB(Base):  # type: ignore
     nickname: str = Column(String, nullable=False) #type:ignore
     room_id:int = Column(Integer, nullable=False)  #type:ignore
     end_time = Column(Integer)
-    duration: int = Column(Integer)  #type:ignore
     # is_live = Column(Boolean, nullable=False, default = False)
     is_uploaded = Column(Boolean, nullable=False, default = False)
-    videos = relationship("Video_DB", back_populates="live")
+    videos:List = relationship("Video_DB", back_populates="live")
 
     def to_dict(self) -> Dict[str, Any]:
         dict_temp = {}
@@ -75,11 +75,22 @@ class Video_DB(Base):
     video_id = Column(Integer, primary_key=True)
     live_id = Column(Integer, ForeignKey('Live.live_id'), nullable=False)
     start_time: int = Column(Integer, nullable=False)     #type:ignore
-    videoname: str = Column(String, nullable=False)     #type:ignore
+    
+    @property
+    def videoname(self) -> str: 
+        return os.path.join(self.video_directory,self.video_basename)
+    @videoname.setter
+    def videoname(self, videopath: str):
+        self.video_basename = os.path.basename(videopath)
+        self.video_directory = os.path.dirname(videopath)
+
+    video_basename: str = Column(String, nullable=True)  #type:ignore
+    video_directory: str = Column(String, nullable=False)   #type:ignore
+
     subtitle_file: str = Column(String)     #type:ignore
     end_time:int = Column(Integer)   #type:ignore
-    duration = Column(Integer)
-    size = Column(Integer)
+    duration:int = Column(Integer)  #type:ignore
+    size:int = Column(Integer)  #type:ignore
     is_live:bool = Column(Boolean, nullable=False)    #type:ignore
     deletion_type: int = Column(Integer, nullable=False, default=0)    #type:ignore
     is_stored: bool = Column(Boolean, nullable=False)    #type:ignore
@@ -109,7 +120,7 @@ class Danmu_DB(Base):  # type: ignore
     __tablename__ = 'Danmu'
     danmu_id = Column(Integer, primary_key=True)
     live_id = Column(Integer, ForeignKey('Live.live_id'), nullable=False)
-    video_id = Column(Integer)
+    video_basename = Column(String)
     content = Column(String, nullable=False)
     start_time = Column(Integer, nullable=False)
     uid = Column(Integer, nullable = False)
@@ -154,8 +165,11 @@ def connect_db(target:str):
                             # echo = True, 
                             # echo_pool = "debug"
                             )
-    mapper_registry.metadata.create_all(engine)
+    initialize_db(engine)
     return engine
+    
+def initialize_db(engine):
+    mapper_registry.metadata.create_all(engine)
 
 class TableManager():
     engine: Any

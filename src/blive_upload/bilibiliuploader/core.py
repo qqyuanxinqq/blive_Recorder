@@ -1,10 +1,11 @@
+from copy import deepcopy
 from datetime import datetime
-from . import cipher
+from typing import Any, List, Optional
 from urllib import parse
 import os
 import math
 import hashlib
-from ...utils.retry import Retry
+
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 import base64
 from time import sleep
@@ -13,6 +14,9 @@ import sys
 from filelock import FileLock
 import requests
 
+from . import cipher
+from ...utils.retry import Retry
+from ...model.LiveDB import Live
 
 # From PC ugc_assisstant
 APPKEY = 'aae92bc66f3edfab'
@@ -294,7 +298,7 @@ def login_by_access_token(access_token):
         params=login_params,
         timeout = 60,
     )
-    print(r.content)
+    # print(r.content)
     login_data = r.json()['data']
 
     return r.cookies['sid'], login_data['mid'], login_data["expires_in"]
@@ -396,7 +400,7 @@ def check_upload_chunk(r):
         return False
 
 
-def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5, thread_pool_workers = 1):
+def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5, thread_pool_workers = 1) -> Optional[str]:
     """
     upload a video file.
     Args:
@@ -412,7 +416,7 @@ def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5
     """
     if video_part.server_file_name:
         print('video part {} exists. The server_file_name is: {}'.format(video_part.path, video_part.server_file_name))
-        return True
+        return video_part.server_file_name
     
     headers = {
         'Connection': 'keep-alive',
@@ -472,7 +476,7 @@ def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5
             for t in done:
                 if not t.result():
                     print("upload failed in upload_video_part for: ", local_file_name)
-                    return False
+                    return None
             # print(t_list)
         
     print(file_hash.hexdigest())
@@ -495,7 +499,9 @@ def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5
 
     video_part.server_file_name = server_file_name
     print('video part {} finished. The server_file_name is: {}'.format(video_part.path, server_file_name), flush=True)
-    return True
+    return server_file_name
+
+
 
 def record_info_fromjson(video_list_json):
     with FileLock(video_list_json + '.lock'):
@@ -509,135 +515,163 @@ def record_info_dumptojson(record_info):
         with open(filename, 'w') as f:
             json.dump(record_info, f, indent=4)
 
-def upload(
-        access_token,
-        sid,
-        mid,
-        avid,
-        bvid,
-        parts,
-        copyright: int,
-        title: str,
-        tid: int,
-        tag: str,
-        desc: str,
-        source: str = '',
-        cover: str = '',
-        no_reprint: int = 0,
-        open_elec: int = 1,
-        max_retry: int = 5,
-        thread_pool_workers: int = 1,
-        video_list_json = '',
-        submit_mode = 1):
+class BilibiliUploaderBase():
     """
-    insert videos into existed post.
-
-    Args:
-        access_token: oauth2 access token.
-        sid: session id.
-        mid: member id.
-        avid: av number,
-        bvid: bv string,
-        parts: VideoPart list.
-        insert_index: new video index.
-        copyright: 原创/转载.
-        title: 投稿标题.
-        tid: 分区id.
-        tag: 标签.
-        desc: 投稿简介.
-        source: 转载地址.
-        cover: cover url.
-        no_reprint: 可否转载.
-        open_elec: 充电.
-        max_retry: max retry time for each chunk.
-        thread_pool_workers: max upload threads.
-        video_list_json: This file will be frequently checked for dynamic realtime parts uploading. 
-        mode: 1(default): single submission, 2: submission after each video part
-
-    Returns:
-        (aid, bvid)
-        aid: av号
-        bvid: bv号
+    access_token: oauth2 access token.
+    sid: session id.
+    mid: member id.
+    avid: av number,
+    bvid: bv string,
+    parts: VideoPart list.
+    insert_index: new video index.
+    copyright: 原创/转载.
+    title: 投稿标题.
+    tid: 分区id.
+    tag: 标签.
+    desc: 投稿简介.
+    source: 转载地址.
+    cover: cover url.
+    no_reprint: 可否转载.
+    open_elec: 充电.
+    max_retry: max retry time for each chunk.
+    thread_pool_workers: max upload threads.
+    video_list_json: This file will be frequently checked for dynamic realtime parts uploading. 
+    submit_mode: 1(default): single submission, 2: submission after each video part
+    replace_tag: If avid is provided and exists:
+         0(default): New videos will not replace all existing post, but append to the end
+         1: Replace all existing post with new videos
+    engine: For database connection, if not provided, operate in offline mode
     """
-    if submit_mode == 1:
-        print("single submission mode")
-    elif submit_mode ==2:
-        print("submission after each video part")
+    access_token: Optional[str]
+    sid: Optional[int]
+    mid: Optional[int]
+    avid: Optional[int] = None
+    bvid: Optional[str] = None
+    parts: List[VideoPart]
+    copyright: int
+    title: str
+    tid: int
+    tag: str
+    desc: str
+    source: str 
+    cover: str 
+    no_reprint: int 
+    open_elec: int
+    max_retry: int 
+    thread_pool_workers: int
+    video_list_json: str
+    submit_mode:int = 1
+    replace_tag: int = 0
+    engine: Any = None
 
+    def _upload(self):
+        """
+        if avid and bvid not provided, create new video post
+        otherwise:
+            if replace_tag set to 0, append videos to the existing post.
+            if replace_tag set to 1, replace the existing post
 
-    if not avid and not bvid:
-        print("Add new video post")
-    else:
-        print('Replace existing video post: Avid: {}, Bvid: {}'.format(avid, bvid))
-        if not avid:
-            avid = cipher.bv2av(bvid)
+        Returns:
+            (aid, bvid)
+            aid: av号
+            bvid: bv号
+        """
+        if self.submit_mode == 1:
+            print("single submission mode")
+        elif self.submit_mode ==2:
+            print("submission after each video part")
 
-    # cover
-    if os.path.isfile(cover):
-        try:
-            cover = upload_cover(access_token, sid, cover)
-        except:
-            cover = ''
-    else:
-        cover = '' 
-    submit_data = {
-        'build': 1054,
-        'copyright': copyright,
-        'cover': cover,
-        'desc': desc,
-        'no_reprint': no_reprint,
-        'open_elec': open_elec,
-        'source': source,
-        'tag': tag,
-        'tid': tid,
-        'title': title,
-        'videos': []
-    }
-    
-    if not isinstance(parts, list):
-        parts = [parts]
-    dynamic_update = bool(video_list_json)
-    post_videos_num = 0
-
-    # parts is dynamic updating
-    while True:
-        if len(parts) != post_videos_num:
-            for video_part in parts[post_videos_num::]:
-                print("upload {} now".format(video_part.path))
-                status = upload_video_part(access_token, sid, mid, video_part, max_retry,thread_pool_workers)
-                if not status:
-                    print("upload failed")
-                    return None, None
-                post_videos_num += 1
-                if submit_mode == 2:
-                    avid, bvid = submit_videos(access_token, sid, parts[0:post_videos_num], submit_data, avid)
-        
-        if not dynamic_update:
-            print("No dynamic record_info json file provided, stop waiting for new videos.")
-            break
+        existing_videos = []
+        if not self.avid and not self.bvid:
+            print("Add new video post")
         else:
-        #     print("Trakcing provided record_info json file.")
-            sleep(40)
-            sys.stdout.flush()
-            record_info = record_info_fromjson(video_list_json)
-            directory = record_info.get('directory')
-            file_list=record_info.get('videolist')
-            for item in file_list[post_videos_num::]:
-                parts.append(VideoPart(
-                    path=os.path.join(directory, item),
-                    title = item.split('.')[0]
-                ))
-            if record_info.get("Status", "Done") == "Living":
-                print("The live is still on, waiting for new videos.")
+            if self.bvid:
+                self.avid = cipher.bv2av(self.bvid)
+            if self.replace_tag == 1:
+                print('Replace existing video post: Avid: {}, Bvid: {}'.format(self.avid, self.bvid))
             else:
-                print("The live is done, stop waiting for new videos.")
-                dynamic_update = False
-    if submit_mode == 1:
-        avid, bvid = submit_videos(access_token, sid, parts, submit_data, avid)
+                print('Append to existing video post: Avid: {}, Bvid: {}'.format(self.avid, self.bvid))
+                existing_videos = archive_posted_videos(self.access_token, self.sid,self.avid)['videos']
 
-    print("Done! All {} videos uploaded!".format(post_videos_num))
+        # cover
+        if os.path.isfile(self.cover):
+            try:
+                self.cover = upload_cover(self.access_token, self.sid, self.cover)
+            except:
+                self.cover = ''
+        else:
+            self.cover = '' 
+        
+        submit_data = {
+            'build': 1054,
+            'copyright': self.copyright,
+            'cover': self.cover,
+            'desc': self.desc,
+            'no_reprint': self.no_reprint,
+            'open_elec': self.open_elec,
+            'source': self.source,
+            'tag': self.tag,
+            'tid': self.tid,
+            'title': self.title,
+            'videos': []
+        }
+        
+        live_info = None
+        dynamic_update = bool(self.video_list_json)
+        json_temp = self.video_list_json+".temp"
+        if dynamic_update:
+            live_info = Live(online=bool(self.engine), json_file= self.video_list_json, engine = self.engine)
 
-    return avid, bvid
+        post_videos_num = 0
+
+        # parts is dynamic updating
+        while True:
+            if len(self.parts) != post_videos_num:
+                for video_part in self.parts[post_videos_num::]:
+                    print("upload {} now".format(video_part.path))
+                    server_name = upload_video_part(self.access_token, self.sid, self.mid, video_part, self.max_retry,self.thread_pool_workers)
+                    if not server_name:
+                        print("upload failed")
+                        return None, None
+                    if live_info:
+                        live_info.video_servername(live_info.live_db.videos[post_videos_num], server_name)
+                        live_info.set_json()
+                        live_info.dump_json(json_temp)
+
+                    post_videos_num += 1
+                    if self.submit_mode == 2:
+                        self.avid, self.bvid = submit_videos(self.access_token, self.sid, self.parts[0:post_videos_num], submit_data, existing_videos, self.avid)
+            
+            if not dynamic_update:
+                print("No dynamic record_info json file provided, stop waiting for new videos.")
+                break
+            elif live_info:
+            #     print("Trakcing provided record_info json file.")
+                sleep(40)
+                sys.stdout.flush()
+                live_info.from_json()
+
+                # record_info = record_info_fromjson(self.video_list_json)
+                # directory = record_info.get('directory')
+                # file_list=record_info.get('videolist')
+
+                for item in live_info.live_db.videos[post_videos_num::]:
+                    self.parts.append(VideoPart(
+                        path=item.videoname,
+                        title = item.video_basename.split('.')[0],
+                        server_file_name= item.server_name
+                    ))
+                if not live_info.live_db.end_time:
+                    print("The live is still on, waiting for new videos.")
+                else:
+                    print("The live is done, stop waiting for new videos.")
+                    dynamic_update = False
+        if self.submit_mode == 1:
+            self.avid, self.bvid = submit_videos(self.access_token, self.sid, self.parts, submit_data, existing_videos, self.avid)
+
+        print("Done! All {} videos uploaded!".format(post_videos_num))
+
+        return self.avid, self.bvid
 
 @Retry(max_retry = 5, interval = 1).decorator
 def get_post_data(access_token, sid, avid):
@@ -669,131 +703,8 @@ def get_post_data(access_token, sid, avid):
     print(r.content.decode())
     return r.json()["data"]
 
-# def replace_videos(
-#         access_token,
-#         sid,
-#         mid,
-#         avid,
-#         bvid,
-#         parts,
-#         copyright: int,
-#         title: str,
-#         tid: int,
-#         tag: str,
-#         desc: str,
-#         source: str = '',
-#         cover: str = '',
-#         no_reprint: int = 0,
-#         open_elec: int = 1,
-#         max_retry: int = 5,
-#         thread_pool_workers: int = 1,
-#         video_list_json = '',
-#         mode = 2):
-#     """
-#     insert videos into existed post.
-
-#     Args:
-#         access_token: oauth2 access token.
-#         sid: session id.
-#         mid: member id.
-#         avid: av number,
-#         bvid: bv string,
-#         parts: VideoPart list.
-#         insert_index: new video index.
-#         copyright: 原创/转载.
-#         title: 投稿标题.
-#         tid: 分区id.
-#         tag: 标签.
-#         desc: 投稿简介.
-#         source: 转载地址.
-#         cover: cover url.
-#         no_reprint: 可否转载.
-#         open_elec: 充电.
-#         max_retry: max retry time for each chunk.
-#         thread_pool_workers: max upload threads.
-
-#     Returns:
-#         (aid, bvid)
-#         aid: av号
-#         bvid: bv号
-#     """
-
-
-#     if not avid and not bvid:
-#         print("please provide avid or bvid")
-#         return None, None
-
-#     if not avid:
-#         avid = cipher.bv2av(bvid)
-#     # cover
-#     if os.path.isfile(cover):
-#         try:
-#             cover = upload_cover(access_token, sid, cover)
-#         except:
-#             cover = ''
-#     else:
-#         cover = '' 
-#     submit_data = {
-#         'build': 1054,
-#         'copyright': copyright,
-#         'cover': cover,
-#         'desc': desc,
-#         'no_reprint': no_reprint,
-#         'open_elec': open_elec,
-#         'source': source,
-#         'tag': tag,
-#         'tid': tid,
-#         'title': title,
-#         'videos': []
-#     }
-    
-#     if not isinstance(parts, list):
-#         parts = [parts]
-#     dynamic_update = bool(video_list_json)
-#     post_videos_num = 0
-
-#     # parts is dynamic updating
-#     while True:
-#         if len(parts) != post_videos_num:
-#             for video_part in parts[post_videos_num::]:
-#                 print("upload {} now".format(video_part.path))
-#                 status = upload_video_part(access_token, sid, mid, video_part, max_retry,thread_pool_workers)
-#                 print("video part {} finished, status: {}".format(video_part.path, status), flush=True)
-#                 if not status:
-#                     print("upload failed")
-#                     return None, None
-#             post_videos_num = len(parts)
-#             if mode == 2:
-#                 avid, bvid = submit_videos(access_token, sid, parts, submit_data, avid)
-        
-#         if not dynamic_update:
-#             print("No dynamic record_info json file provided, stop waiting for new videos.")
-#             break
-#         else:
-#         #     print("Trakcing provided record_info json file.")
-#             sleep(40)
-#             sys.stdout.flush()
-#             record_info = record_info_fromjson(video_list_json)
-#             directory = record_info.get('directory')
-#             file_list=record_info.get('videolist')
-#             for item in file_list[post_videos_num::]:
-#                 parts.append(VideoPart(
-#                     path=os.path.join(directory, item),
-#                     title = item.split('.')[0]
-#                 ))
-#             if record_info.get("Status", "Done") == "Living":
-#                 print("The live is still on, waiting for new videos.")
-#             else:
-#                 print("The live is done, stop waiting for new videos.")
-#                 dynamic_update = False
-#     if mode == 1:
-#         avid, bvid = submit_videos(access_token, sid, parts, submit_data, avid)
-
-#     print("Done! All {} videos uploaded!".format(post_videos_num))
-
-#     return avid, bvid
 @Retry(max_retry = 3, interval = 10).decorator
-def submit_videos(access_token, sid, parts, submit_data, avid = None):
+def submit_videos(access_token, sid, parts, submit_data, existing_videos, avid = None):
     '''
     Return avid, bvid
     '''
@@ -837,7 +748,7 @@ def submit_videos(access_token, sid, parts, submit_data, avid = None):
             old_data["open_elec"] = submit_data.get('open_elec')
         submit_data = old_data
 
-    submit_data['videos'] = []
+    submit_data['videos'] = deepcopy(existing_videos)
     for video_part in parts:
         submit_data['videos'].append({
             "desc": video_part.desc,
@@ -886,3 +797,26 @@ def submit_videos(access_token, sid, parts, submit_data, avid = None):
     data = r.json()["data"]
     return data["aid"], data["bvid"]
 
+@Retry(max_retry = 3, interval = 10).decorator
+def archive_posted_videos(access_token, sid, avid):
+    '''
+    Return exitsing video info for given avid
+    '''
+    avid = int(avid)
+# Load previously submitted data
+    post_video_data = get_post_data(access_token, sid, avid)
+    old_data = {
+        'aid': avid,
+        'build': 1054,
+        'copyright': post_video_data["archive"]["copyright"],
+        'cover': post_video_data["archive"]["cover"],
+        'desc': post_video_data["archive"]["desc"],
+        'no_reprint': post_video_data["archive"]["no_reprint"],
+        'open_elec': post_video_data["archive_elec"]["state"], # open_elec not tested
+        'source': post_video_data["archive"]["source"],
+        'tag': post_video_data["archive"]["tag"],
+        'tid': post_video_data["archive"]["tid"],
+        'title': post_video_data["archive"]["title"],
+        'videos': post_video_data["videos"]
+    }
+    return old_data

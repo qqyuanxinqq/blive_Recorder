@@ -11,10 +11,10 @@ from collections import defaultdict
 import websocket
 from src.blive_download.api import get_ws_host, ws_key, ws_open_msg
 
-from src.blive_download.model.LiveDB import Live
+from ..model.LiveDB import Live
 
-from .model import Video_DB
-from .model import DanmuManager
+from ..model import Video_DB
+from ..model import DanmuManager
 
 Handler = Callable[[Dict], None]
 
@@ -315,9 +315,16 @@ class Message_Handler():
 
 
 class Danmu_To_DB():   #modify this in the future
-    def __init__(self, live: Live, engine) -> None:
+    def __init__(self, live: Live, engine:Any = None) -> None:
         self.live = live
-        self.engine = engine
+
+        if engine is not None:
+            self.engine = engine
+        elif self.live.engine is not None:
+            self.engine = self.live.engine
+        else:
+            raise Exception("No database engine provided")
+
         self.danmu_manager = DanmuManager(engine = self.engine)
         self.danmu_DB_list = []
         self.timer = time.time()
@@ -328,7 +335,7 @@ class Danmu_To_DB():   #modify this in the future
     def danmu_handler(self,j):
         danmu_DB = dict(
             live_id = self.live.live_db.live_id,
-            video_id = self.live.curr_video.video_id if self.live.curr_video else None,
+            video_basename = self.live.curr_video.video_basename if self.live.curr_video else None,
             content = None,
             start_time = None,
             uid = None,
@@ -380,10 +387,8 @@ def generate_handler(live_info:Live) -> Message_Handler:
     ass_handler = Ass_Generator(live_info)
     message_handler.set_handler('DANMU_MSG')(ass_handler.danmu_handler)
     message_handler.set_handler('SUPER_CHAT_MESSAGE')(ass_handler.SC_handler)
-    
     # message_handler.set_handler('DANMU_MSG')(Danmu_Counter(live_info).count)
-
-    # message_handler.set_handler('ALL')(Danmu_To_DB(live_info, live_info.engine).danmu_handler)
+    message_handler.set_handler('ALL')(Danmu_To_DB(live_info).danmu_handler)
 
     return message_handler
 

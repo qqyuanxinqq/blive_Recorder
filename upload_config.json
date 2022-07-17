@@ -1,0 +1,68 @@
+{
+    "example":{         
+        "username" : "username",
+        "password" : "password",
+
+        "upload_args" : {
+            "copyright":1,
+            "title": "Example Title",
+            "tid":17,
+            "tag": ["Some", "Tags"],
+            "desc":["An example video description"]
+        }  
+    },
+    "kaofish":{
+        "username":"username",
+        "password":"password",
+        "login_token_file": "Videos/kaofish/upload_log/bililogin.json",
+        
+        "upload_args":{"copyright": 1,
+            "title": "【⭐烤鱼子{month}.{day}.{hour}时 录播⭐】摸了摸了",
+            "tid": 17,
+            "tag": ["烤鱼", "烤鱼子", "录播", "烤鱼子Official", "烤鱼录播"],
+            "desc": [
+                "⭐烤鱼子Official⭐{year}.{month}.{day} 直播，单推地址：https://live.bilibili.com/22259479",
+                "粉丝群：烤鱼盖浇饭研究协会：784611303，欢迎来摸鱼",
+                "本视频系自动上传，欢迎各位在评论区留下游戏内容、分P等相关信息",
+                "(录播机：https://github.com/qqyuanxinqq/blive_Recorder 快就是快！)"],
+            "source": "",
+            "cover": "",
+            "no_reprint": 0,
+            "open_elec": 1,
+            "max_retry": 5,
+            "thread_pool_workers": 10,
+            "video_list_json": "",
+            "submit_mode": 1,
+            "replace_tag": 0,
+            "avid": null,
+            "bvid": null
+        }
+    },
+    "test2":{
+        "username":"username",
+        "password":"password",
+        "login_token_file": "/home/xyl/f/blive_v5/Videos/api/upload_log/bililogin.json",
+        
+        "upload_args":{"copyright": 1,
+            "title": "测试用{month}.{day}.{hour}时",
+            "tid": 17,
+            "tag": ["神奇陆夫人","老陆"],
+            "desc": [
+                "测试用",
+                "这个视频用于随机测试上传",
+                "{year}.{month}.{day} 直播"
+            ],
+            "source": "",
+            "cover": "",
+            "no_reprint": 0,
+            "open_elec": 1,
+            "max_retry": 5,
+            "thread_pool_workers": 10,
+            "video_list_json": "",
+            "submit_mode": 1,
+            "replace_tag": 0,
+            "avid": null,
+            "bvid": null
+        }
+    }
+}

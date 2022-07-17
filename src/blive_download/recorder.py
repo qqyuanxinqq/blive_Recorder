@@ -7,11 +7,13 @@ from threading import Thread
 # import subprocess
 from typing import Any, Callable, List, Optional, Tuple
 
+from ..blive_upload.cfg_upload import configured_upload
+
 
 from ..utils import Myproc, configCheck
 from .api import get_stream_url, is_live, record_ffmpeg, record_source, room_id
-from .flvmeta import flvmeta_update
-from .model import Video_DB, connect_db, Live
+from .pyflvmeta import flvmeta_update
+from ..model import Video_DB, connect_db, Live
 from .ws import Message_Handler, WebSocketAppManager, generate_handler
 
 
@@ -44,7 +46,8 @@ class Recorder():
     storage_stg: int
 
     database: Optional[str] 
-    upload_func: Optional[Callable]
+    upload_configuration: Optional[str]
+    upload_func: Callable
 
     live_dir: str
     live_status: bool
@@ -57,17 +60,24 @@ class Recorder():
 
     def __init__(self, up_name:str) -> None:
         self.up_name = up_name
-        self.callback_list:List[Callable[[Video_DB],None]] = [
-            flvmeta,
-            self.dump_video_json
-        ]
+        self.callback_list:List[Callable[[Video_DB],None]]
         self.threads = []
 
-    def init_from_json(self, config_file:str , upload_func =None):
-        self.upload_func = upload_func   #Think about how to pass this
+        # self.callback_list = [
+        #     flvmeta,
+        #     self.dump_video_json
+        # ]
+        # self.record = record_source
 
-        self.record = record_source     #Think about how to pass this
-                
+        self.callback_list = [self.dump_video_json]
+        self.record = record_ffmpeg     #Think about how to pass this
+
+        self.upload_func = configured_upload
+        
+    def init_from_json(self, config_file:str):
+        '''
+        Set recorder as configured. UP specified configuration will overwrite the global setting. 
+        '''
         default_conf = configCheck(configpath= config_file)
         self.room_id = default_conf["room_id"]
         self.divide_video = default_conf["divide_video"]
@@ -76,7 +86,8 @@ class Recorder():
         self.path = default_conf["path"]
         self.storage_stg = default_conf["storage_stg"]
         
-        self.database = default_conf.get("Database")  
+        self.database = default_conf.get("Database")
+        self.upload_configuration = default_conf.get("Upload_configuration")    
         conf = configCheck(configpath= config_file, up_name = self.up_name)
         
         for key in Recorder.REQUIRED_KEY:
@@ -87,6 +98,8 @@ class Recorder():
         print(f"Split videos by {self.divide_video}")
         if self.upload_flag == 1:
             print("自动上传已启用")
+            if not self.upload_configuration:
+                print("upload_configuration not provided")
         else:
             print("自动上传未启用")
         
@@ -98,7 +111,7 @@ class Recorder():
 
     def check(self):
         '''
-        Check if all necessary components are set, and preset all relavant components
+        Check if all necessary components(REQUIRED_KEY) are set, and preset all relavant components
         '''
         for key in Recorder.REQUIRED_KEY:
             if not hasattr(self, key):
@@ -123,7 +136,8 @@ class Recorder():
             print(f"Connected to {self.database} database")
         else:
             self.engine = None
-            print("No database provided")
+            print("No database provided, operate in offline mode")
+
 
     def run(self):
         os.environ['TZ'] = 'Asia/Shanghai'
@@ -148,20 +162,27 @@ class Recorder():
         self.ws_manage.handler = generate_handler(self.live)
         self.ws_manage.run_ws_recon_thread()
 
-        self.live.set_record_info()
+        self.live.set_json()
         self.live.dump_json()
         self.threads = []
     def __new_live_finalize(self, fail = False):
-        if not fail:
+        if self.live.live_db.end_time is None:
+            if self.live.curr_video is not None and not self.live.curr_video.end_time: #Change this in the future 修改 del curr_video after finalize
+                curr_videoanme = self.live.curr_video.videoname
+                self.live.finalize_video(True, int(time.time()), 0 if not os.path.isfile(curr_videoanme) else os.path.getsize(curr_videoanme), self.storage_stg)
+
             self.live.from_new_finalize(int(time.time())) 
+        if not fail:
             while self.threads:
                 self.threads.pop().join()
             time.sleep(10)
   
         self.ws_manage.maintain_ws = False
-        self.live.json_live_end()
+        self.live.set_json()
         self.live.dump_json()
         print("Live Done ",datetime.datetime.now(), flush = True)
+
+        del self.live
 
     def __check_live_status(self):
         try:
@@ -196,6 +217,7 @@ class Recorder():
             self.live.finalize_video(True, int(time.time()), video_size, self.storage_stg)
             
             t_post_record = Thread(target=self.__post_record, args=(self.live.curr_video,), name=self.live.curr_video.videoname) 
+            #Warning, think about, 修改， 不应该传入curr_video
             t_post_record.start()
             self.threads.append(t_post_record)
         else:
@@ -231,11 +253,7 @@ class Recorder():
             self.__new_live_finalize()
 
     def __upload(self):
-        if not self.upload_func:
-            print("=============================")
-            print("No upload function provided")
-            print("=============================")
-        elif self.live.json_file is None:
+        if self.live.json_file is None:
             print("=============================")
             print("self.live.json_file provided as None")
             print("=============================")
@@ -250,8 +268,8 @@ class Recorder():
             # p = subprocess.Popen(['nohup python3 -u ./blive_upload/{}.py {} > {} 2>&1  & echo $! > {}'.format(\
             # self.up_name,record_info.get('filename'), logfile, logfile)],\
             # shell=True)
-            p = Myproc(target = self.upload_func, args = (self.live.json_file,), name="[{}]Uploader".format(self.up_name))
-            p.set_output(logfile)
+            p = Myproc(target = self.upload_func, args = (self.live.json_file,self.upload_configuration), name="[{}]Uploader".format(self.up_name))
+            p.set_output_err(logfile)
             p.start()
             p.post_run()
             print("=============================")

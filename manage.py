@@ -1,4 +1,4 @@
-from src.blive_download.model import connect_db, RecorderManager, VideoManager
+from src.model import connect_db, RecorderManager, VideoManager
 from src.utils import configCheck
 
 

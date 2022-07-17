@@ -3,7 +3,7 @@ from sqlalchemy.dialects.sqlite import insert
 
 
 from .db import Danmu_DB, TableManager
-from ...utils import Retry
+from ..utils import Retry
 
 @Retry(max_retry = 5, interval = 10).decorator
 class DanmuManager(TableManager):

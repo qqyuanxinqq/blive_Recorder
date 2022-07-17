@@ -1,25 +1,33 @@
 import datetime, time
+import logging
 import os
 import json
-from typing import Optional
+from typing import Any, Optional
 
 from filelock import FileLock
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import Live_DB, TableManager, Video_DB
-from ...utils import Retry
+from ..utils import Retry
 
 @Retry(max_retry = 5, interval = 10).decorator
 class LiveManager(TableManager):
-    def add_live(self, live: Live_DB):
+    def add_live(self, live: Live_DB) -> Live_DB:
         with Session(self.engine) as session:
             session.expire_on_commit = False
             session.add(live)
             session.commit()
             temp = live.videos  #Actively access its children to eager load
         return live
-
-    
+    def read_live_2(self, live_id: int):
+        stmt = select(Live_DB).where(Live_DB.live_id == live_id)
+    def read_live(self, live_id: int) -> Live_DB:
+        with Session(self.engine) as session:
+            session.expire_on_commit = False
+            live = session.get(Live_DB, live_id)
+            temp = live.videos  #Actively access its children to eager load
+        return live
 
 class Live():
     '''
@@ -45,7 +53,8 @@ class Live():
         self.online_mode = online
         self.engine = engine
         self.db_url = None
-        self.record_info = {}
+        self.json_output = {}
+        self.json_input = {}
         self.json_file:Optional[str] = json_file if json_file else None
         self.curr_video: Optional[Video_DB] = None
         # self.live_dir: Optional[str] = None
@@ -53,16 +62,43 @@ class Live():
         self.live_manager: Optional[LiveManager] = None
         
         
-    def from_json(self):
-        # self.live_dir = live_dir
-        # self.engine = engine
-        # self.live_db = Live_DB()
-        # self.live_db.nickname = up_name
-        # self.live_db.room_id = room_id
-        # self.live_db.start_time = start_time if start_time else int(time.time())
-        pass
+    def from_json(self, filename: Optional[str] = None):
+        '''
+        Generate python ORM object self.live_db:Live_DB from dumped json file.
+        Note: the object is not mapped to the database.
 
-    def set_record_info(self, version = 'v1'):
+        If filename not provided, it will use self.json_file as filename.
+        If self.json_name not exists, it will initialized in the directory self.live_dir+self.video_info_dir
+        '''
+        if filename is None:
+            if self.json_file is None:
+                raise Exception("Json file is not provided as filename or self.json_file")
+            filename =  self.json_file
+        if not os.path.exists(filename):
+            raise Exception("Provided *.json path is not valid")
+
+        with FileLock(filename + '.lock'):
+            with open(filename, 'r') as f:
+                self.json_input = json.load(f)
+        
+        if self.json_input['version'] == 'v1':
+            if self.online_mode:
+                self.from_database(self.json_input['live_DB']['live_id'])
+            else: 
+                self.live_db = Live_DB(**self.json_input['live_DB'])
+                for video in self.json_input['video_list']:
+                    self.live_db.videos.append(Video_DB(**video))
+
+
+    def video_servername(self, video: Video_DB, server_name):
+        '''
+        
+        '''
+        video.server_name = server_name
+        if self.online_mode:
+            self.commit()
+
+    def set_json(self, version = 'v1'):
         info_json = {
             'version' : version,
             'time_format':self.TIMEFORMAT,
@@ -76,15 +112,16 @@ class Live():
             'day':start_time.strftime("%d"),
             'hour':start_time.strftime("%H"),
             'up_name': self.live_db.nickname,
-            'live_dir': os.path.abspath(self.live_dir),
-            'Status':"Living"
+            # 'live_dir': os.path.abspath(self.live_dir),
+            'Status':"Done" if self.live_db.end_time else "Living"
         })
-        self.record_info = info_json
+        self.json_output = info_json
 
     def dump_json(self, filename=None):
         '''
         If filename not provided, it will use self.json_file as filename.
-        If self.json_name not exists, it will initialized in the directory self.live_dir+self.video_info_dir
+        If self.json_name not exists, it will be initialized in the directory self.live_dir+self.video_info_dir, 
+        with basename self.live_db.nickname + self.live_db.time_create.strftime(self.TIMEFORMAT)+'.json'
         '''
         if filename is None:
             if self.json_file is None:
@@ -96,7 +133,7 @@ class Live():
         os.makedirs(os.path.dirname(filename), exist_ok = True)
         with FileLock(filename+".lock"):
             with open(filename, 'w') as f:
-                json.dump(self.record_info, f, indent=4) 
+                json.dump(self.json_output, f, indent=4) 
    
     # Try always regernerate the json
     def json_append_video(self, video: Optional[Video_DB] = None):
@@ -106,13 +143,18 @@ class Live():
         video = self.curr_video if video is None else video
         if video is None:
             raise Exception("curr_video is not initialized")
-        self.record_info['video_list'].append(video.to_dict())
+        self.json_output['video_list'].append(video.to_dict())
         print(f"{video.videoname} appended to record info")
-    def json_live_end(self):
-        self.record_info['Status'] = "Done"
 
-    def from_database(self, live_id:int, engine):
-        pass
+    def from_database(self, live_id:int, engine:Optional[Any] = None):
+        if engine is not None:
+            self.engine = engine
+        elif self.engine is None:
+            raise Exception("Engine object is not provided.")
+
+        if self.live_manager is None:
+            self.live_manager = LiveManager(engine = self.engine, db = self.db_url)
+        self.live_db = self.live_manager.read_live(live_id)
 
     def from_new(
         self, 
@@ -122,7 +164,7 @@ class Live():
         start_time:int = 0,
         ):
         '''
-        Generate python object self.live_db:Live_DB from scratch
+        Generate python ORM object self.live_db:Live_DB from scratch
         '''
         self.live_dir = live_dir
         self.live_db = Live_DB()
@@ -136,48 +178,31 @@ class Live():
         Update the python object self.live_db:Live_DB from scratch
         '''
         self.live_db.end_time = end_time  
-        self.live_db.duration = end_time-self.live_db.start_time
+        # self.live_db.duration = end_time-self.live_db.start_time
         if self.online_mode:
             self.commit()
 
     def commit(self):
-        if self.live_manager is None:
-            self.live_manager = LiveManager(engine = self.engine, db = self.db_url)
-        self.live_manager.add_live(self.live_db)
-
-    # def __init__(self, engine, up_name,live_dir, roomid):
-    #     self.live_dir = live_dir
-    #     self.record_info_dir = os.path.join(self.live_dir, self.video_info_dir)
-    #     os.makedirs(self.record_info_dir , exist_ok = True)
-        
-    #     self.up_name = up_name
-    #     self.room_id = roomid
-    #     self.time_create = datetime.datetime.now()
-    #     self.end_time: Union[None, int] = None
-    #     self.set_record_info()
-        
-    #     self.live_DB = Live_DB()
-    #     self.update_live_DB()
-
-    #     #curr_video needs to be initialized for websocket app works properly
-    #     self.curr_video : Video = self.init_video()      
-
-    #     self.num_danmu_total = 0
-        
+        try:
+            if self.live_manager is None:
+                self.live_manager = LiveManager(engine = self.engine, db = self.db_url)
+            self.live_manager.add_live(self.live_db)
+        except Exception as e:
+            logging.exception(e)
 
     def init_video(
         self, 
         filename:Optional[str]=None, 
         time_create:Optional[datetime.datetime]=None
-        ):
+        ) -> Video_DB:
         '''
         Used for initialize new video object, should be called in the presence of self.live. 
+        This new will video will be attached to the live object UNTIL finalize_video(is_stored = True) is called.
         '''
         if not self.live_db:
             raise Exception("Missing live_DB object")
 
         video = Video_DB()
-        video.live = self.live_db
         video.time_create = datetime.datetime.now() if time_create is None else time_create
         if filename is not None:
             video.filename = filename
@@ -194,9 +219,9 @@ class Live():
             self.commit()
         return self.curr_video
     
-    def finalize_video(self, is_stored, end_time, size, storage_stg, video: Optional[Video_DB] = None):
+    def finalize_video(self, is_stored:bool, end_time:int, size:int, storage_stg:int, video: Optional[Video_DB] = None) -> Video_DB:
         '''
-        If not video specified, finalize curr_video
+        If not video specified, finalize curr_video and set it as None
         '''
         video = self.curr_video if video is None else video
 
@@ -208,8 +233,14 @@ class Live():
         video.is_live = False  
         video.is_stored = is_stored  
         video.deletion_type = storage_stg
+
+        if video.is_stored:
+            video.live = self.live_db
+
         if self.online_mode:
             self.commit()
+
+        return video
 
 
 

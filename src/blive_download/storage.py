@@ -4,8 +4,8 @@ from time import sleep
 import datetime
 import os
 from typing import Set
-from .model.VideoDB import VideoManager
-from .model.db import Video_DB
+from ..model.VideoDB import VideoManager
+from ..model.db import Video_DB
 
 def _remove(file_path):
     if os.path.exists(file_path):
@@ -51,9 +51,9 @@ class StorageManager():
             videos = self.video_manager.get_stored_videos()
             for v in videos:
                 #Check is the file has been deleted or not
-                if not os.path.exists(v.videoname):  # type: ignore
+                if not os.path.exists(v.videoname):  
                     print("{} is missing on the disk".format(v.videoname))
-                    v.is_stored = False # type: ignore
+                    v.is_stored = False 
                     self.modified_videos.add(v)
                     continue
                 

@@ -1,7 +1,8 @@
 {
     "_default": {
         "Enabled_recorder": ["test","test2"],
-        "Database": "",
+        "Database": "test.db",
+        "upload_configuration": "upload_config.json",
         "name": "_default",
         "room_id": "",
         "divide_video": ["size", 1],
@@ -40,13 +41,13 @@
     },
     "test": {
         "name": "test",
-        "room_id": "22259479",
+        "room_id": "3",
         "divide_video": ["rounding", 30]
     },
     "test2": {
         "name": "test2",
-        "room_id": "6750632",
-        "divide_video": ["rounding", 30]
+        "room_id": "115",
+        "divide_video": ["rounding", 300]
     },
     "yoshino": {
         "name": "yoshino",
