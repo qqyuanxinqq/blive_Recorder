@@ -5,6 +5,7 @@ from multiprocessing import get_context
 from threading import Thread
 import logging
 
+#Todo??? Provide a registeration decorator, so the App manager can easiliy get the process list
 class Myproc(get_context('spawn').Process):
     def __init__(self, group=None, target=None, name=None, args=(), kwargs={},
                  *, daemon=None):

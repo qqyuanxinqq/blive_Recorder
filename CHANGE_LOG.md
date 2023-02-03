@@ -1,3 +1,10 @@
+## 12/11/2022
+Now recorded video includes the live room title at at the start time.
+Add options to set video title for upload
+
+## 08/29/2022
+Reorganize code related to video recording and processing. Now support burning Danmu(*.ass subtitle) into video files.  
+
 ## 06/26/2022
 Change stream_url API to v2, hope the new stream_url format can fix stream download timeout.
 

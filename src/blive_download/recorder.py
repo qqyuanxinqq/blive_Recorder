@@ -1,9 +1,9 @@
+from concurrent.futures import ThreadPoolExecutor
 import datetime
 import logging
 import os
 import sys
 import time
-from threading import Thread
 # import subprocess
 from typing import Any, Callable, List, Optional, Tuple
 
@@ -11,8 +11,8 @@ from ..blive_upload.cfg_upload import configured_upload
 
 
 from ..utils import Myproc, configCheck
-from .api import get_stream_url, is_live, record_ffmpeg, record_source, room_id
-from .pyflvmeta import flvmeta_update
+from .api import get_stream_url, is_live, get_room_id, get_room_info
+from .videohandler import burn_subtitle, flvmeta, record_ffmpeg, record_source
 from ..model import Video_DB, connect_db, Live
 from .ws import Message_Handler, WebSocketAppManager, generate_handler
 
@@ -32,8 +32,8 @@ class Recorder():
     REQUIRED_KEY = [
         "room_id",
         "divide_video",
-        "flvtag_update",
-        "upload_flag", 
+        "flvtag_update",    #Is this needed?
+        "upload_flag",      #Is this needed?
         "path",
         "storage_stg",
     ]
@@ -61,16 +61,14 @@ class Recorder():
     def __init__(self, up_name:str) -> None:
         self.up_name = up_name
         self.callback_list:List[Callable[[Video_DB],None]]
-        self.threads = []
-
         # self.callback_list = [
         #     flvmeta,
         #     self.dump_video_json
         # ]
         # self.record = record_source
 
-        self.callback_list = [self.dump_video_json]
-        self.record = record_ffmpeg     #Think about how to pass this
+        self.callback_list = [burn_subtitle]
+        self.record = record_source     #Think about how to pass this
 
         self.upload_func = configured_upload
         
@@ -118,7 +116,7 @@ class Recorder():
                 raise Exception(f"Attribute {key} is not properly set")
         
         self.live_status = False
-        self.room_id = room_id(self.room_id)
+        self.room_id = get_room_id(self.room_id)
         self.live_dir = os.path.join(self.path, self.up_name)
         os.makedirs(self.live_dir, exist_ok = True)
 
@@ -156,26 +154,32 @@ class Recorder():
 
     def __new_live_init(self) -> None:
         self.live = Live(online = bool(self.database), engine = self.engine)
-        self.live.from_new(self.up_name,self.room_id, self.live_dir)     
+        live_title = get_room_info(self.room_id).get("title","")
+        self.live.from_new(self.up_name,self.room_id, self.live_dir, live_title = live_title)
+
         
         self.ws_manage = WebSocketAppManager(self.room_id)
         self.ws_manage.handler = generate_handler(self.live)
         self.ws_manage.run_ws_recon_thread()
+        self.post_record_executor = ThreadPoolExecutor(max_workers=1)
 
         self.live.set_json()
         self.live.dump_json()
-        self.threads = []
     def __new_live_finalize(self, fail = False):
         if self.live.live_db.end_time is None:
-            if self.live.curr_video is not None and not self.live.curr_video.end_time: #Change this in the future 修改 del curr_video after finalize
+            if self.live.curr_video and not self.live.curr_video.end_time: #Change this in the future 修改 del curr_video after finalize
                 curr_videoanme = self.live.curr_video.videoname
-                self.live.finalize_video(True, int(time.time()), 0 if not os.path.isfile(curr_videoanme) else os.path.getsize(curr_videoanme), self.storage_stg)
+                self.live.finalize_video(
+                    True, 
+                    int(time.time()), 
+                    0 if not os.path.isfile(curr_videoanme) else os.path.getsize(curr_videoanme), 
+                    self.storage_stg,
+                    self.live.curr_video
+                    )
 
             self.live.from_new_finalize(int(time.time())) 
         if not fail:
-            while self.threads:
-                self.threads.pop().join()
-            time.sleep(10)
+            self.post_record_executor.shutdown(wait=True)
   
         self.ws_manage.maintain_ws = False
         self.live.set_json()
@@ -200,33 +204,50 @@ class Recorder():
             return None
         return real_url
 
-    def __init_new_video(self) -> str:
+    def __init_new_video(self) -> Video_DB:
         '''
         Generate the file name for the new video, as well as other initilization for the new video piece.
         '''
-        #New video starts
-        self.live.init_video()
-        assert self.live.curr_video
+        #New video starts, using a temp filename
+        curr_video = self.live.init_video()
 
-        return self.live.curr_video.videoname
+        live_title = get_room_info(self.room_id).get("title", "")
+        curr_video.live_title = live_title  #type:ignore
+        
+        return curr_video
 
-    def __finalize_new_video(self, rtncode,video_size):
-        assert self.live.curr_video
+    def __finalize_new_video(self, video: Video_DB, rtncode, video_size):
+
+        def finalize_wrapper(is_stored: bool, end_time: int, size: int, storage_stg: int) -> Callable[[Video_DB],None]:
+            def _(video: Video_DB)->None:
+                self.live.finalize_video(is_stored, end_time, size, storage_stg, video = video)
+            return _
+        
+        def post_record(video_db:Video_DB, callback_list: List[Callable[[Video_DB],None]]):
+            for callback in callback_list:
+                try:
+                    callback(video_db)
+                except Exception as e:
+                    logging.exception(e)
+
         if not rtncode:
             #Modify recorded video and dump updated record_info
-            self.live.finalize_video(True, int(time.time()), video_size, self.storage_stg)
-            
-            t_post_record = Thread(target=self.__post_record, args=(self.live.curr_video,), name=self.live.curr_video.videoname) 
-            #Warning, think about, 修改， 不应该传入curr_video
-            t_post_record.start()
-            self.threads.append(t_post_record)
+            callback_list = self.callback_list + [finalize_wrapper(True, int(time.time()), video_size, self.storage_stg), self.dump_video_json]
+            self.post_record_executor.submit(
+                post_record,
+                video,
+                callback_list
+                )
+            # t_post_record = Thread(
+            #     target=self.__post_record, 
+            #     args=(video,self.callback_list + [finalize_wrapper(True, int(time.time()), video_size, self.storage_stg), self.dump_video_json]), 
+            #     name=video.videoname
+            #     ) 
+            # t_post_record.start()
+            # self.threads.append(t_post_record)
         else:
-            print("record failed on {}".format(self.live.curr_video.videoname))
-            self.live.finalize_video(False, int(time.time()), 0, self.storage_stg)
-        
-    def __post_record(self, video_db:Video_DB):
-        for callback in self.callback_list:
-            callback(video_db)
+            print("record failed on {}".format(video.videoname))
+            self.live.finalize_video(False, int(time.time()), 0, self.storage_stg, video = video)
 
     def recording(self):
         while True:
@@ -247,9 +268,14 @@ class Recorder():
                     print("开播了但是没有源")
                     time.sleep(5)
                     continue
-                video_file = self.__init_new_video()
-                rtncode, video_size = self.record(real_url, video_file, self.record_check) 
-                self.__finalize_new_video(rtncode,video_size)
+                video = self.__init_new_video()
+                
+                self.live.curr_video = video
+                rtncode, video_size = self.record(real_url, video.videoname, self.record_check) 
+                self.live.curr_video = None
+                
+                self.__finalize_new_video(video, rtncode,video_size)
+                time.sleep(1)
             self.__new_live_finalize()
 
     def __upload(self):
@@ -279,14 +305,6 @@ class Recorder():
     def dump_video_json(self,video_db: Video_DB):
         self.live.json_append_video(video_db)
         self.live.dump_json()
-
-
-def flvmeta(video_db:Video_DB):
-    filename = video_db.videoname
-    print("==========Flvmeta============\n", filename, flush = True)
-    rtn = flvmeta_update(filename)
-    print("==========Flvmeta============\n", rtn, flush = True)
-
 
 def check_size(size_limit):
     '''

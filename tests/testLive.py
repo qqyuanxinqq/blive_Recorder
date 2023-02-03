@@ -105,12 +105,13 @@ class TestFromJsonOnline(BaseTestCase):
         for video in EXAMPLE1["video_list"]:
             filename = os.path.join(video["video_directory"], video["video_basename"]).split(".")[0]
             time_create = datetime.datetime.fromtimestamp(video["start_time"])
-            live.init_video(filename, time_create)
+            video_i = live.init_video(filename, time_create)
             live.finalize_video(
                 video["is_stored"],
                 video["end_time"],
                 video["size"],
-                video["deletion_type"]
+                video["deletion_type"],
+                video_i
             )
         live.from_new_finalize(EXAMPLE1["live_DB"]["end_time"])
         with NamedTemporaryFile('w+') as f:
@@ -139,12 +140,13 @@ class TestFromNewOnline(BaseTestCase):
         for video in EXAMPLE1["video_list"]:
             filename = os.path.join(video["video_directory"], video["video_basename"]).split(".")[0]
             time_create = datetime.datetime.fromtimestamp(video["start_time"])
-            self.live.init_video(filename, time_create)
+            video_i = self.live.init_video(filename, time_create)
             self.live.finalize_video(
                 video["is_stored"],
                 video["end_time"],
                 video["size"],
-                video["deletion_type"]
+                video["deletion_type"],
+                video_i
             )
         self.live.from_new_finalize(EXAMPLE1["live_DB"]["end_time"])
 

@@ -498,7 +498,7 @@ def upload_video_part(access_token, sid, mid, video_part: VideoPart, max_retry=5
     print("video part finished, status code:", r.status_code)
 
     video_part.server_file_name = server_file_name
-    print('video part {} finished. The server_file_name is: {}'.format(video_part.path, server_file_name), flush=True)
+    print('video part \n{}\n finished, status code:{}. \nThe server_file_name is: {}'.format(video_part.path, r.status_code, server_file_name), flush=True)
     return server_file_name
 
 
@@ -514,6 +514,26 @@ def record_info_dumptojson(record_info):
     with FileLock(filename+".lock"):
         with open(filename, 'w') as f:
             json.dump(record_info, f, indent=4)
+
+def parse_video_title(form:Optional[str], item) -> str:
+    if not form:
+        return item.video_basename.split('.')[0]
+    else:
+        info_dict = dict()
+        start_time = datetime.fromtimestamp(item.start_time)
+        info_dict.update({
+            'year':start_time.strftime("%Y"),
+            'month':start_time.strftime("%m"),
+            'day':start_time.strftime("%d"),
+            'hour':start_time.strftime("%H"),
+            'minute':start_time.strftime("%M"),
+            'second':start_time.strftime("%S"),
+        })
+        info_dict.update({
+            'live_title':item.live_title
+        })
+        return form.format(**info_dict)
+
 
 class BilibiliUploaderBase():
     """
@@ -563,6 +583,7 @@ class BilibiliUploaderBase():
     submit_mode:int = 1
     replace_tag: int = 0
     engine: Any = None
+    title_format: Optional[str]
 
     def _upload(self):
         """
@@ -651,18 +672,14 @@ class BilibiliUploaderBase():
                 sys.stdout.flush()
                 live_info.from_json()
 
-                # record_info = record_info_fromjson(self.video_list_json)
-                # directory = record_info.get('directory')
-                # file_list=record_info.get('videolist')
-
                 for item in live_info.live_db.videos[post_videos_num::]:
                     self.parts.append(VideoPart(
                         path=item.videoname,
-                        title = item.video_basename.split('.')[0],
+                        title = parse_video_title(self.title_format, item),
                         server_file_name= item.server_name
                     ))
                 if not live_info.live_db.end_time:
-                    print("The live is still on, waiting for new videos.")
+                    print("The live is still on, waiting for new videos.", flush=True)
                 else:
                     print("The live is done, stop waiting for new videos.")
                     dynamic_update = False
@@ -700,7 +717,7 @@ def get_post_data(access_token, sid, avid):
         timeout = 60,
     )
 
-    print(r.content.decode())
+    # print(r.content.decode())
     return r.json()["data"]
 
 @Retry(max_retry = 3, interval = 10).decorator
@@ -791,7 +808,7 @@ def submit_videos(access_token, sid, parts, submit_data, existing_videos, avid =
             timeout = 60,
         )
     print("Current {} videos submitted, status code: {}".format(len(parts), r.status_code), flush=True)
-    print(r.content.decode())
+    # print(r.content.decode())
     
 
     data = r.json()["data"]

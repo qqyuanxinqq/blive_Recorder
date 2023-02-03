@@ -1,8 +1,8 @@
 {
     "_default": {
-        "Enabled_recorder": ["test","test2"],
+        "Enabled_recorder": ["test", "api"],
         "Database": "test.db",
-        "upload_configuration": "upload_config.json",
+        "Upload_configuration": "upload_config.json",
         "name": "_default",
         "room_id": "",
         "divide_video": ["size", 1],
@@ -11,47 +11,16 @@
         "path": "Videos/",
         "storage_stg": 0
     },
-    "xiaotudou": {
-        "name": "xiaotudou",
-        "room_id": "2096082"
-    },
-    "kaofish": {
-        "name": "kaofish",
-        "room_id": "22259479",
-        "upload": 0,
-        "storage_stg": 2
-    },
     "api": {
         "name": "api",
         "room_id": "92613",
-        "upload": 1
-    },
-    "xiaofuge": {
-        "name": "xiaofuge",
-        "room_id": "24794193"
-    },
-    "naicha": {
-        "name": "naicha",
-        "divide_video": ["duration", 120],
-        "room_id": "1220"
-    },
-    "yommyko": {
-        "name": "yommyko",
-        "room_id": "21263282"
+        "upload_flag": 1,
+        "divide_video": ["rounding", 3600]
     },
     "test": {
         "name": "test",
         "room_id": "3",
-        "divide_video": ["rounding", 30]
-    },
-    "test2": {
-        "name": "test2",
-        "room_id": "115",
-        "divide_video": ["rounding", 300]
-    },
-    "yoshino": {
-        "name": "yoshino",
-        "room_id": "83068",
-        "div_size_gb": "2"
+        "upload_flag": 0,
+        "divide_video": ["rounding", 60]
     }
 }

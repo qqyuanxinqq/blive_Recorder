@@ -18,6 +18,13 @@ from ..model import DanmuManager
 
 Handler = Callable[[Dict], None]
 
+BLACK_LIST=[
+    "老板大气！点点红包抽礼物！",
+    "赞",
+    "老板大气！点点红包抽礼物",
+    "喜欢主播加关注，点点红包抽礼物",
+    ]
+
 
 def get_json(recv):      
     """
@@ -104,6 +111,8 @@ class Ass_Generator():
         Input json object, output string in ass format
         If curr_video attribute doesn't exist, it ignores the message.
         """
+        if j.get('info')[1] in BLACK_LIST:
+            return
         if self.curr_video:
             ass_line = self._danmu_to_ass_line(j,self.curr_video.danmu_end_time,self.curr_video.time_create)
             self._ass_write(ass_line, self.curr_video)
@@ -335,7 +344,7 @@ class Danmu_To_DB():   #modify this in the future
     def danmu_handler(self,j):
         danmu_DB = dict(
             live_id = self.live.live_db.live_id,
-            video_basename = self.live.curr_video.video_basename if self.live.curr_video else None,
+            video_id = self.live.curr_video.video_id if self.live.curr_video else None,
             content = None,
             start_time = None,
             uid = None,
@@ -362,7 +371,8 @@ class Danmu_To_DB():   #modify this in the future
                 uid = j["data"]["uid"],
                 username = j["data"]["user_info"]["uname"],
                 type = j.get('cmd'),
-                price = j["data"]["price"]
+                price = j["data"]["price"],
+                color = int(j["data"]["background_bottom_color"][1:7],16),   #type:ignore
             ))
             self.write_to_DB(danmu_DB)
         

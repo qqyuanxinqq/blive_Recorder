@@ -131,3 +131,4 @@ class App():
         recorder = Recorder(up_name)
         recorder.init_from_json(configpath)
         recorder.run()
+

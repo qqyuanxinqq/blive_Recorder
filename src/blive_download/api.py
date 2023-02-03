@@ -1,8 +1,8 @@
 import json
 import datetime, time
-import re
 import logging
 import os
+import traceback
 from typing import Callable, Dict, Optional, Tuple
 
 import urllib3
@@ -25,7 +25,13 @@ http = urllib3.PoolManager(
 def my_request(url, fields = None) -> Dict:
     res = http.request('Get', url, fields = fields)
     content = res.data
-    return json.loads(content.decode())
+    try:
+        rtn = json.loads(content.decode())
+        return rtn
+    except:
+        print(traceback.format_exc())
+        print(content.decode())
+        return dict()
 
 def is_live(roomid):
     live_api = "https://api.live.bilibili.com/room/v1/Room/room_init?id=%s"%str(roomid)
@@ -40,7 +46,7 @@ def is_live(roomid):
     else:
         raise Exception(f"live_status as {live_status}, not 0,1,2")
 
-def room_id(short_id):
+def get_room_id(short_id):
     live_api = "https://api.live.bilibili.com/room/v1/Room/room_init?id=%s"%str(short_id)
     rtn = my_request(live_api)
     return rtn["data"]["room_id"]
@@ -67,6 +73,11 @@ def ws_open_msg(roomid):  #return the first message for websocket connection
     opening = bytes_1 + bytes(bytes_2 + bytes_3, encoding='utf-8')
     return opening
 
+def get_room_info(roomid:int) -> Dict:
+    room_info = "https://api.live.bilibili.com/room/v1/Room/get_info?room_id={}".format(roomid)
+    rtn = my_request(room_info).get("data", dict())
+    return rtn
+
 # https://github.com/biliup/biliup/blob/b6c718155d095d6306b2c85e73fb25271e8bf510/biliup/plugins/bilibili.py
 def get_stream_url(uid) -> Optional[str]:
     params = {
@@ -91,144 +102,4 @@ def get_stream_url(uid) -> Optional[str]:
         stream_number += 1
     stream_url:str = data['url_info'][stream_number]['host'] + data['base_url'] + data['url_info'][stream_number]['extra']
     return stream_url
-    
-
-DURATION_THRESHOLD = 10
-SIZE_THRESHOLD = 1000
-RECORD_HEADER = {
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Encoding': 'gzip, deflate',
-    'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3',
-    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:38.0) Gecko/20100101 Firefox/38.0 Iceweasel/38.2.1',
-    'Referer': 'https://live.bilibili.com'
-}
-
-def record_source(url, file_name, check_func: Callable[[int, float], bool]) -> Tuple[int,int]:
-    '''
-    Return (status_code, size)
-    '''
-    if not url:
-        return -1, 0
-    timeout = 2
-    retry_num = 5
-    
-    try:
-        res = http.request(
-                        'Get', 
-                        url, 
-                        headers=RECORD_HEADER,
-                        retries = urllib3.Retry(total = retry_num, backoff_factor = 0.2),
-                        timeout = timeout,
-                        preload_content=False
-                        )  
-    except Exception as e:
-        logging.exception(e)
-        print("Failed on: ", url)
-        return -1, 0
-    
-    start_time = time.time()
-    with open(file_name, 'wb') as f:    
-        print('starting download from:\n%s\nto:\n%s' % (url, file_name), datetime.datetime.now())
-        size = 0
-        n = 0
-        now_1=datetime.datetime.now()
-        while n < 5:
-            duration = time.time() - start_time
-            try:
-                _buffer = res.read(1024 * 32)
-            except Exception as e:
-                _buffer = b''
-                logging.exception(e)
-                print("=============================")
-                print(e)
-                print("=============================")
-
-            if len(_buffer) == 0:
-                print('==========Currently buffer empty!=={}========='.format(n))
-                n+=1
-                time.sleep(0.2)
-                
-            else:
-                n = 0
-                f.write(_buffer)
-                size += len(_buffer)
-                if now_1 + datetime.timedelta(seconds=10) < datetime.datetime.now() :
-                    now_1=datetime.datetime.now()
-                    print('{:<4.2f} MB downloaded'.format(size/1024/1024),datetime.datetime.now())
-                if check_func(size, duration):
-                    print("=============End of the video reached!==============")
-                    break
-    duration = time.time() - start_time
-    print("finnally")
-    if res:
-        res.release_conn()
-        print("res.release_conn()")
-
-    if not os.path.isfile(file_name):
-        return -1, 0
-    elif (os.path.getsize(file_name) <= SIZE_THRESHOLD or duration <= DURATION_THRESHOLD):
-        os.remove(file_name)
-        print(f"os.remove({file_name})")
-        return -1, 0
-
-    return 0, size
-
-def record_ffmpeg(url, file_name, check_func: Callable[[int, float], bool]) -> Tuple[int,int]:
-    '''
-    Record through FFmpeg. FFmpeg must be installed and accessible via the $PATH environment variable
-
-    Return (status_code, size)
-    '''
-    import subprocess
-    process = subprocess.run(['ffmpeg', '-version'], stdout= subprocess.PIPE)
-    if process.returncode:
-        raise FileNotFoundError("FFmpeg not found. FFmpeg must be installed and accessible via the $PATH environment variable")
-
-    print(f'starting FFmpeg from:\n{url}\nto:\n{file_name}', datetime.datetime.now())
-    
-    import ffmpeg
-    input = ffmpeg.input(url)
-    output = ffmpeg.output(input, file_name, acodec='copy', vcodec='copy', loglevel = 'warning')
-    # run: subprocess.Popen = output.run_async(cmd=['ffmpeg','-loglevel','quiet'])
-    run: subprocess.Popen = output.run_async()
-    try:
-        start_time = time.time()
-        now_1 = datetime.datetime.now()
-        prev_size = 0
-        while True:
-            time.sleep(2)
-            duration = time.time() - start_time
-            size = 0 if not os.path.isfile(file_name) else os.path.getsize(file_name)
-
-            
-            if run.poll() is None:
-                if check_func(size, duration):
-                    print("=============End of the video reached!==============")
-                    break
-                if size == prev_size:
-                    print("=============URL timeout!==============")
-                    break
-                if now_1 + datetime.timedelta(seconds=10) < datetime.datetime.now() :
-                    now_1=datetime.datetime.now()
-                    print('{:<4.2f} MB downloaded'.format(size/1024/1024),datetime.datetime.now())
-            else:
-                print("=============FFmpeg terminated!==============")
-                break
-            prev_size = size
-    finally:
-        run.terminate()
-    
-    
-    if not os.path.isfile(file_name):
-        return -1, 0
-    elif (os.path.getsize(file_name) <= SIZE_THRESHOLD or duration <= DURATION_THRESHOLD):
-        os.remove(file_name)
-        print(f"os.remove({file_name})")
-        return -1, 0
-
-    return 0, size
-    
-        
-    
-    
     

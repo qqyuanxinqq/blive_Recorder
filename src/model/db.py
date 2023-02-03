@@ -40,6 +40,7 @@ class Live_DB(Base):  # type: ignore
     # is_live = Column(Boolean, nullable=False, default = False)
     is_uploaded = Column(Boolean, nullable=False, default = False)
     videos:List = relationship("Video_DB", back_populates="live")
+    live_title: str = Column(String)    #type:ignore
 
     def to_dict(self) -> Dict[str, Any]:
         dict_temp = {}
@@ -95,6 +96,7 @@ class Video_DB(Base):
     deletion_type: int = Column(Integer, nullable=False, default=0)    #type:ignore
     is_stored: bool = Column(Boolean, nullable=False)    #type:ignore
     server_name = Column(String)
+    live_title:str = Column(String) #type:ignore
     
     live: Live_DB = relationship("Live_DB", back_populates = "videos")
     filename: str
@@ -114,13 +116,14 @@ class Video_DB(Base):
     
     def __repr__(self) -> str:
         return "Object" + repr({x:y for x,y in self.__dict__.items() if not x.startswith('_')})
+        
 
 # Danmu protocal https://zhuanlan.zhihu.com/p/37874066
 class Danmu_DB(Base):  # type: ignore
     __tablename__ = 'Danmu'
     danmu_id = Column(Integer, primary_key=True)
     live_id = Column(Integer, ForeignKey('Live.live_id'), nullable=False)
-    video_basename = Column(String)
+    video_id = Column(Integer)
     content = Column(String, nullable=False)
     start_time = Column(Integer, nullable=False)
     uid = Column(Integer, nullable = False)

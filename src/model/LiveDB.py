@@ -89,7 +89,6 @@ class Live():
                 for video in self.json_input['video_list']:
                     self.live_db.videos.append(Video_DB(**video))
 
-
     def video_servername(self, video: Video_DB, server_name):
         '''
         
@@ -112,6 +111,7 @@ class Live():
             'day':start_time.strftime("%d"),
             'hour':start_time.strftime("%H"),
             'up_name': self.live_db.nickname,
+            'live_title': self.live_db.live_title,
             # 'live_dir': os.path.abspath(self.live_dir),
             'Status':"Done" if self.live_db.end_time else "Living"
         })
@@ -136,13 +136,12 @@ class Live():
                 json.dump(self.json_output, f, indent=4) 
    
     # Try always regernerate the json
-    def json_append_video(self, video: Optional[Video_DB] = None):
+    def json_append_video(self, video: Video_DB):
         '''
-        If not video specified, append curr_video
+        Append video specified
         '''
-        video = self.curr_video if video is None else video
         if video is None:
-            raise Exception("curr_video is not initialized")
+            raise Exception("Video is not initialized")
         self.json_output['video_list'].append(video.to_dict())
         print(f"{video.videoname} appended to record info")
 
@@ -162,6 +161,7 @@ class Live():
         room_id: int, 
         live_dir: str, 
         start_time:int = 0,
+        live_title:str = ""
         ):
         '''
         Generate python ORM object self.live_db:Live_DB from scratch
@@ -170,6 +170,7 @@ class Live():
         self.live_db = Live_DB()
         self.live_db.nickname = up_name
         self.live_db.room_id = room_id
+        self.live_db.live_title = live_title
         self.live_db.start_time = start_time if start_time else int(time.time())
         if self.online_mode:
             self.commit()
@@ -214,19 +215,18 @@ class Live():
         video.is_live = True  
         video.is_stored = False  
         
-        self.curr_video = video
         if self.online_mode:
             self.commit()
-        return self.curr_video
+        return video
     
-    def finalize_video(self, is_stored:bool, end_time:int, size:int, storage_stg:int, video: Optional[Video_DB] = None) -> Video_DB:
+    def finalize_video(self, is_stored:bool, end_time:int, size:int, storage_stg:int, video: Video_DB) -> Video_DB:
         '''
-        If not video specified, finalize curr_video and set it as None
+        Finalize video specified
         '''
-        video = self.curr_video if video is None else video
-
+        
         if video is None:
-            raise Exception("curr_video is not initialized")
+            print("Video is not initialized")
+            return Video_DB()
         video.end_time = end_time 
         video.duration = end_time - video.start_time    
         video.size = size     
@@ -235,7 +235,12 @@ class Live():
         video.deletion_type = storage_stg
 
         if video.is_stored:
-            video.live = self.live_db
+            #Avoid unnecessary attachment to the live object in database
+            video.live = self.live_db   
+        else:
+            if os.path.exists(video.subtitle_file):
+                # Delete unnecessary ass files. 
+                os.remove(video.subtitle_file)
 
         if self.online_mode:
             self.commit()

@@ -1,5 +1,5 @@
 from typing import Optional
-from .core import BilibiliUploaderBase, login, login_by_access_token
+from .core import BilibiliUploaderBase, VideoPart, login, login_by_access_token
 import json
 
 
@@ -44,7 +44,7 @@ class BilibiliUploader(BilibiliUploaderBase):
             return login_data
 
     def set_videos_info(self,
-                parts,
+                parts: list[VideoPart],
                 copyright: int,
                 title: str,
                 tid: int,
@@ -61,11 +61,13 @@ class BilibiliUploader(BilibiliUploaderBase):
                 avid: Optional[int] = None,
                 bvid: Optional[str] = None,
                 replace_tag: int = 0,
-                engine = None
+                engine = None,
+                title_format = None
                ):
         """
-        Args:
+        Configure the uploader object based on the argument passed.
 
+        Args:
         access_token: oauth2 access token.
         sid: session id.
         mid: member id.
@@ -109,6 +111,8 @@ class BilibiliUploader(BilibiliUploaderBase):
         self.replace_tag = replace_tag
 
         self.engine = engine
+
+        self.title_format = title_format
         
 
     def upload_new(self, submit_mode = 1):

@@ -10,6 +10,11 @@ from .bilibiliuploader.core import VideoPart
 #Edit Information here, details in https://github.com/FortuneDayssss/BilibiliUploader
 #此处修改上传内容，标题，简介，tag等，详见https://github.com/FortuneDayssss/BilibiliUploader
 def config_gen(config_json: str, record_info: dict, up_name = None):
+    """
+    Generate the upload configuration for this python script, 
+    based on the config_json(json file) and record_info(json file for videos and live info) provided.
+    """
+    #Specify the up_name
     if not up_name:
         up_name = record_info["up_name"]
     
@@ -27,7 +32,7 @@ def config_gen(config_json: str, record_info: dict, up_name = None):
     upload_args["desc"] = "\n".join(upload_args["desc"])
 
     for x in upload_args:
-        if isinstance(upload_args[x], str):
+        if isinstance(upload_args[x], str) and x != "title_format":
             upload_args[x] = upload_args[x].format(**record_info)
 
     return config
@@ -50,17 +55,17 @@ def uploader_login(login_token_file, username: str = "username", password: str =
             uploader.save_login_data(file_name=login_token_file)
     return uploader
 
-def parts_prepare(record_info):
-    # 处理视频文件
-    parts = []
-    file_list=record_info.get('video_list')
-    for item in file_list:
-        parts.append(VideoPart(
-            path=item.videoname,
-            title = item.basename.split('.')[0],
-            server_file_name= item.server_name
-        ))
-    return parts
+# def parts_prepare(record_info):
+#     # 处理视频文件
+#     parts = []
+#     file_list=record_info.get('video_list')
+#     for item in file_list:
+#         parts.append(VideoPart(
+#             path=item.videoname,
+#             title = item.live_title if item.live_title else item.basename.split('.')[0],
+#             server_file_name= item.server_name
+#         ))
+#     return parts
 
 def configured_upload(record_info_json: str, config_json: str, *args, **kwargs):
     '''

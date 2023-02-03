@@ -14,10 +14,10 @@
     "kaofish":{
         "username":"username",
         "password":"password",
-        "login_token_file": "Videos/kaofish/upload_log/bililogin.json",
+        "login_token_file": "/home/xyl/f/blive_v5/Videos/kaofish/upload_log/bililogin.json",
         
         "upload_args":{"copyright": 1,
-            "title": "【⭐烤鱼子{month}.{day}.{hour}时 录播⭐】摸了摸了",
+            "title": "【⭐烤鱼子{month}.{day}.{hour}时 录播⭐】摸了摸了 [弹幕版]",
             "tid": 17,
             "tag": ["烤鱼", "烤鱼子", "录播", "烤鱼子Official", "烤鱼录播"],
             "desc": [
@@ -32,25 +32,26 @@
             "max_retry": 5,
             "thread_pool_workers": 10,
             "video_list_json": "",
-            "submit_mode": 1,
-            "replace_tag": 0,
+            "submit_mode": 2,
+            "replace_tag": 1,
             "avid": null,
-            "bvid": null
+            "bvid": null,
+            "title_format":"{month}{year}_{hour}-{minute}-{second}_{live_title}"
         }
     },
-    "test2":{
+    "api":{
         "username":"username",
         "password":"password",
         "login_token_file": "/home/xyl/f/blive_v5/Videos/api/upload_log/bililogin.json",
         
         "upload_args":{"copyright": 1,
-            "title": "测试用{month}.{day}.{hour}时",
+            "title": "【少年Pi{month}.{day}.{hour}时 录播】先行弹幕版",
             "tid": 17,
-            "tag": ["神奇陆夫人","老陆"],
+            "tag": ["少年Pi", "API", "api", "少年pi"],
             "desc": [
-                "测试用",
-                "这个视频用于随机测试上传",
-                "{year}.{month}.{day} 直播"
+                "⭐少年Pi⭐{year}.{month}.{day} 直播，单推地址：https://live.bilibili.com/92613",
+                "如果脚本不出bug的话，应该每天都会在这里滚动更新API当日录播的先行版。",
+                "仅供先行观看使用，正式版还请移步@少年Pi的奇妙录播。正式版发布后这里的内容随时作废。"
             ],
             "source": "",
             "cover": "",
@@ -59,10 +60,34 @@
             "max_retry": 5,
             "thread_pool_workers": 10,
             "video_list_json": "",
-            "submit_mode": 1,
-            "replace_tag": 0,
+            "submit_mode": 2,
+            "replace_tag": 1,
             "avid": null,
-            "bvid": null
+            "bvid": "BV1TY411c7mN"
+        }
+    },
+    "test":{
+        "username":"username",
+        "password":"password",
+        "login_token_file": "/home/xyl/f/blive_v5/Videos/api/upload_log/bililogin.json",
+        
+        "upload_args":{"copyright": 1,
+            "title": "【测试用{month}.{day}.{hour}时 录播】 ",
+            "tid": 17,
+            "tag": [],
+            "desc": [
+                "(录播机：https://github.com/qqyuanxinqq/blive_Recorder 快就是快！)"],
+            "source": "",
+            "cover": "",
+            "no_reprint": 0,
+            "open_elec": 1,
+            "max_retry": 5,
+            "thread_pool_workers": 10,
+            "video_list_json": "",
+            "submit_mode": 2,
+            "replace_tag": 1,
+            "avid": null,
+            "bvid": "BV1BG411p7rc"
         }
     }
 }

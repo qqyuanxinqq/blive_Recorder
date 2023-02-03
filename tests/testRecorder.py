@@ -30,7 +30,7 @@ EXAMPLE_CONFIG1 = {
     }
 }
 
-class TestFromJsonOffline(unittest.TestCase):
+class TestRecorder(unittest.TestCase):
     def setUp(self) -> None:
         """Call before every test case."""
         self.dir = TemporaryDirectory()
@@ -50,31 +50,48 @@ class TestFromJsonOffline(unittest.TestCase):
 
 
     def tearDown(self) -> None:
+        if self.p.is_alive():
+            self.p.terminate()
+        
+        sleep(2)
+        self.config_file.close()
+        self.dir.cleanup()
+
+
+    def test_run(self):
+        
+        for _ in range(30):
+            sleep(1)
+            assert self.p.is_alive(), "recorder.run stopped"
+            files = os.listdir(os.path.join(self.config["_default"]["path"],"test1"))
+            assert files, f"No file in {self.config['_default']['path']}"
+            assert "video_list" in files, f"video_list folder not in {self.config['_default']['path']}"
+
+            files = os.listdir(os.path.join(self.config["_default"]["path"],"test1","video_list"))
+            for jsonfile in [file for file in files if file.endswith('.json')]:
+                with open(os.path.join(self.config["_default"]["path"],"test1","video_list",jsonfile), 'r') as f:
+                    config:dict = json.load(f)
+                    for item in config["video_list"]:
+                        assert item["is_stored"]
+                        assert os.path.exists(os.path.join(item["video_directory"], item["video_basename"]))
+
+
+        # Check items in DB
+
+    def test_ending(self):
+
         if self.p.pid:
             os.kill(self.p.pid, signal.SIGINT)
             sleep(5)
         if self.p.is_alive():
             self.p.terminate()
 
-
-        self.config_file.close()
-        self.dir.cleanup()
-
-
-    def test_run(self):
-
-
-        
-        assert self.p.is_alive(), "recorder.run stopped"
-        files = os.listdir(os.path.join(self.config["_default"]["path"],"test1"))
-        assert files, f"No file in {self.config['_default']['path']}"
-        assert "video_list" in files, f"video_list folder not in {self.config['_default']['path']}"
-
-        
-
-        # Check items in DB
-
-
+        files = os.listdir(os.path.join(self.config["_default"]["path"],"test1","video_list"))
+        for jsonfile in [file for file in files if file.endswith('.json')]:
+            with open(os.path.join(self.config["_default"]["path"],"test1","video_list",jsonfile), 'r') as f:
+                config:dict = json.load(f)
+                for item in config["video_list"]:
+                    assert item["is_stored"]
         
             
 

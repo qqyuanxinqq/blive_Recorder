@@ -47,7 +47,7 @@ class StorageManager():
             self.deleted_size = 0
             print("===========StorageManager==========")
             print(datetime.datetime.now())
-            print("Check Stored video files")
+            print("Check Stored video files",flush=True)
             videos = self.video_manager.get_stored_videos()
             for v in videos:
                 #Check is the file has been deleted or not
