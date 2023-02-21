@@ -14,29 +14,31 @@
     "kaofish":{
         "username":"username",
         "password":"password",
-        "login_token_file": "/home/xyl/f/blive_v5/Videos/kaofish/upload_log/bililogin.json",
+        "login_token_file": "/home/xyl/f/blive_v6/Videos/kaofish/upload_log/bililogin.json",
         
         "upload_args":{"copyright": 1,
-            "title": "【⭐烤鱼子{month}.{day}.{hour}时 录播⭐】摸了摸了 [弹幕版]",
+            "title": "【⭐烤鱼子{month}月{day}日{hour}时 录播⭐】{live_title}",
             "tid": 17,
             "tag": ["烤鱼", "烤鱼子", "录播", "烤鱼子Official", "烤鱼录播"],
             "desc": [
                 "⭐烤鱼子Official⭐{year}.{month}.{day} 直播，单推地址：https://live.bilibili.com/22259479",
                 "粉丝群：烤鱼盖浇饭研究协会：784611303，欢迎来摸鱼",
-                "本视频系自动上传，欢迎各位在评论区留下游戏内容、分P等相关信息",
-                "(录播机：https://github.com/qqyuanxinqq/blive_Recorder 快就是快！)"],
+                "分P名称跟据直播标题自动生成，还请以视频内容为准，欢迎观众在评论区留下指路信息",
+                "",
+                "烤鱼真的巨可爱，大家都来D",
+                "【烤鱼子Official主页】https://space.bilibili.com/592507317"],
             "source": "",
             "cover": "",
             "no_reprint": 0,
             "open_elec": 1,
-            "max_retry": 5,
-            "thread_pool_workers": 10,
+            "max_retry": 50,
+            "thread_pool_workers": 20,
             "video_list_json": "",
             "submit_mode": 2,
-            "replace_tag": 1,
+            "replace_tag": 0,
             "avid": null,
             "bvid": null,
-            "title_format":"{month}{year}_{hour}-{minute}-{second}_{live_title}"
+            "title_format":"{hour}-{minute}-{second}_{live_title}"
         }
     },
     "api":{
@@ -69,10 +71,10 @@
     "test":{
         "username":"username",
         "password":"password",
-        "login_token_file": "/home/xyl/f/blive_v5/Videos/api/upload_log/bililogin.json",
+        "login_token_file": "/home/xyl/f/blive_v6/Videos/test/upload_log/bililogin.json",
         
         "upload_args":{"copyright": 1,
-            "title": "【测试用{month}.{day}.{hour}时 录播】 ",
+            "title": "【测试用{month}.{day} {live_title}录播】 ",
             "tid": 17,
             "tag": [],
             "desc": [
@@ -82,12 +84,13 @@
             "no_reprint": 0,
             "open_elec": 1,
             "max_retry": 5,
-            "thread_pool_workers": 10,
+            "thread_pool_workers": 20,
             "video_list_json": "",
             "submit_mode": 2,
-            "replace_tag": 1,
+            "replace_tag": 0,
             "avid": null,
-            "bvid": "BV1BG411p7rc"
+            "bvid": "BV1BG411p7rc",
+            "title_format":"{live_title}_{month}{year}_{hour}-{minute}-{second}"
         }
     }
 }

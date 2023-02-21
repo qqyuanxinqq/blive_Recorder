@@ -14,11 +14,11 @@ api:
     upload_flag: 1
 test:
     name: test
-    room_id: '3'
+    room_id: '1220'
     divide_video:
     - rounding
     - 60
-    upload_flag: 0
+    upload_flag: 1
 
 
 _default:
