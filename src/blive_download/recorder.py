@@ -77,17 +77,16 @@ class Recorder():
         Set recorder as configured. UP specified configuration will overwrite the global setting. 
         '''
         default_conf = configCheck(configpath= config_file)
-        self.room_id = default_conf["room_id"]
-        self.divide_video = default_conf["divide_video"]
-        self.flvtag_update = default_conf["flvtag_update"]
-        self.upload_flag = default_conf["upload_flag"]
-        self.path = default_conf["path"]
-        self.storage_stg = default_conf["storage_stg"]
+        #Set default settings
+        for key in Recorder.REQUIRED_KEY:
+            if key in default_conf:
+                setattr(self, key, default_conf[key])
         
         self.database = default_conf.get("Database")
         self.upload_configuration = default_conf.get("Upload_configuration")    
         conf = configCheck(configpath= config_file, up_name = self.up_name)
         
+        #Set UP specified settings
         for key in Recorder.REQUIRED_KEY:
             if key in conf:
                 setattr(self, key, conf[key])
@@ -130,7 +129,7 @@ class Recorder():
             raise AttributeError("_divide_video entry not properly set!!!")
 
         if self.database:
-            self.engine = connect_db(self.database) #type:ignore
+            self.engine = connect_db(self.database["link"]) #type:ignore
             print(f"Connected to {self.database} database")
         else:
             self.engine = None
@@ -153,7 +152,7 @@ class Recorder():
             print("[%s]Recorder Terminated Gracefully!"%self.up_name)
 
     def __new_live_init(self) -> None:
-        self.live = Live(online = bool(self.database), engine = self.engine)
+        self.live = Live(online = bool(self.engine), engine = self.engine)
         live_title = get_room_info(self.room_id).get("title","")
         self.live.from_new(self.up_name,self.room_id, self.live_dir, live_title = live_title)
 

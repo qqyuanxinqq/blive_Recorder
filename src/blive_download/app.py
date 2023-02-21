@@ -25,10 +25,13 @@ class App():
         self.engine = None
 
         self.conf = configCheck(configpath, list_all= True)
-        self.database = self.conf["_default"].get("Database")
-        if not self.database:
+
+        
+        if not self.conf["_default"].get("Database"):
             raise Exception("No database provided")
-        self.engine = connect_db(self.database)
+        self.database = self.conf["_default"].get("Database")
+
+        self.engine = connect_db(self.database["link"])
 
         self.storage_manager = StorageManager(self.conf["_default"]["path"], self.engine)
         self.recorder_manager = RecorderManager(engine = self.engine)

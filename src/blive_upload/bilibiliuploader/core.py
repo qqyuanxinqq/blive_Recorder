@@ -300,8 +300,9 @@ def login_by_access_token(access_token):
     )
     # print(r.content)
     login_data = r.json()['data']
+    sid = None  #??? Seems sid is not required. 
 
-    return r.cookies['sid'], login_data['mid'], login_data["expires_in"]
+    return sid, login_data['mid'], login_data["expires_in"]
 
 
 def upload_cover(access_token, sid, cover_file_path):

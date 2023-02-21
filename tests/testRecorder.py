@@ -14,8 +14,8 @@ from src.utils.myproc import Myproc
 EXAMPLE_CONFIG1 = {
     "_default": {
         "Enabled_recorder": ["test1"],
-        "Database": "test.db",
-        "upload_configuration": "upload_config.json",
+        "Database": {"link":"test.db"},
+        "upload_configuration": "config_upload.json",
         "name": "_default",
         "room_id": "",
         "divide_video": ["duration", 10],
@@ -30,14 +30,20 @@ EXAMPLE_CONFIG1 = {
     }
 }
 
+
 class TestRecorder(unittest.TestCase):
+    def _shift_directory(self, path:str) ->str:
+        return os.path.join(self.dir.name, path)
+    
     def setUp(self) -> None:
         """Call before every test case."""
         self.dir = TemporaryDirectory()
         self.config_file = NamedTemporaryFile("w+")
-        for k in ["Database","upload_configuration", "path"]:
+        for k in ["upload_configuration", "path"]:
             if EXAMPLE_CONFIG1["_default"].get(k):
-                EXAMPLE_CONFIG1["_default"][k] = os.path.join(self.dir.name, EXAMPLE_CONFIG1["_default"][k])
+                EXAMPLE_CONFIG1["_default"][k] = self._shift_directory(EXAMPLE_CONFIG1["_default"][k])
+        if EXAMPLE_CONFIG1["_default"].get("Database"):
+            EXAMPLE_CONFIG1["_default"]["Database"]["link"] = self._shift_directory(EXAMPLE_CONFIG1["_default"]["Database"]["link"])        
         self.config = EXAMPLE_CONFIG1
         json.dump(self.config, self.config_file)
         self.config_file.seek(0)

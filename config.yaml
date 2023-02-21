@@ -1,0 +1,50 @@
+#For each recorder, name and room_id are two necessary parameters.
+example101:
+    name: example101
+    room_id: '3'
+
+#Other customized options will overwrite the _default settings. 
+#See more explanation below for avaiable options.
+api:
+    name: api
+    room_id: '92613'
+    divide_video:
+    - rounding
+    - 3600
+    upload_flag: 1
+test:
+    name: test
+    room_id: '3'
+    divide_video:
+    - rounding
+    - 60
+    upload_flag: 0
+
+
+_default:
+  #Global configuration
+    #Database (currently Sqlite) file address, if not provided????
+    Database: {
+      type: sqlite,
+      link: test.db
+    }
+    #A list of Recorders that will be enabled
+    Enabled_recorder: ["test", "api"]
+    #Path for configuration file that will be used for upload
+    Upload_configuration: config_upload.json
+
+  #Configuration for customized recorder
+  #Will be overwritten by the same option appears in specific recorder
+    #REQUIRED: name of the UP, should be the same as the name of the recorder
+    name: _default
+    #REQUIRED: room number of the UP, should be written in string format.
+    room_id: ''
+
+
+    divide_video:
+    - size
+    - 1
+    flvtag_update: 1
+    path: Videos/
+    storage_stg: 0
+    upload_flag: 0

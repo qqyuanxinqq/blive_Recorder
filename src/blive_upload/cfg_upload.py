@@ -6,10 +6,12 @@ import logging
 from .bilibiliuploader.bilibiliuploader import BilibiliUploader
 from .bilibiliuploader.core import VideoPart
 
+from ..utils import configCheck
+
     
 #Edit Information here, details in https://github.com/FortuneDayssss/BilibiliUploader
 #此处修改上传内容，标题，简介，tag等，详见https://github.com/FortuneDayssss/BilibiliUploader
-def config_gen(config_json: str, record_info: dict, up_name = None):
+def config_gen(config_file: str, record_info: dict, up_name = None):
     """
     Generate the upload configuration for this python script, 
     based on the config_json(json file) and record_info(json file for videos and live info) provided.
@@ -18,8 +20,9 @@ def config_gen(config_json: str, record_info: dict, up_name = None):
     if not up_name:
         up_name = record_info["up_name"]
     
-    with open(config_json, 'r') as f:
+    with open(config_file, 'r') as f:
         config:dict = json.load(f)
+    # config:dict = configCheck(config_file, list_all = True)
 
     if "upload_args" not in config:
         if up_name in config:

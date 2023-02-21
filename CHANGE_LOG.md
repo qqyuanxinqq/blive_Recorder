@@ -1,3 +1,9 @@
+## 02/21/2023
+Because old API no longer provides sid, sid is set to None. It looks like cookie (sid) is not required for upload. 
+
+## 02/20/2023
+Now support *.yaml configuration files that is more readable. 
+
 ## 12/11/2022
 Now recorded video includes the live room title at at the start time.
 Add options to set video title for upload

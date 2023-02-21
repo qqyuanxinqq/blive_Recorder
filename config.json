@@ -1,8 +1,11 @@
 {
     "_default": {
         "Enabled_recorder": ["test", "api"],
-        "Database": "test.db",
-        "Upload_configuration": "upload_config.json",
+        "Database": {
+            "type": "sqlite",
+            "link": "test.db"
+          },
+        "Upload_configuration": "config_upload.json",
         "name": "_default",
         "room_id": "",
         "divide_video": ["size", 1],

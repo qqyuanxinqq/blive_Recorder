@@ -4,7 +4,7 @@ from src.blive_upload import configured_upload
 
 
 if __name__ == '__main__':
-    CONFIG_PATH = "config.json"
+    CONFIG_PATH = "config.yaml"
     if len(sys.argv) == 2:
         # Get up_name from prompt
         up_name = sys.argv[1]
