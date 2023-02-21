@@ -1,4 +1,5 @@
 ## 02/21/2023
+Fixed the login issue associated with upload part.
 Because old API no longer provides sid, sid is set to None. It looks like cookie (sid) is not required for upload. 
 
 ## 02/20/2023
