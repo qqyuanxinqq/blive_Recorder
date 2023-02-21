@@ -67,7 +67,8 @@ class Recorder():
         # ]
         # self.record = record_source
 
-        self.callback_list = [burn_subtitle]
+        # self.callback_list = [burn_subtitle]
+        self.callback_list = []
         self.record = record_source     #Think about how to pass this
 
         self.upload_func = configured_upload
