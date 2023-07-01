@@ -156,7 +156,7 @@ def record_ffmpeg(url, file_name, check_func: Callable[[int, float], bool]) -> T
     return 0, size
         
 
-def burn_subtitle(video_db:Video_DB):
+def burn_subtitle(video_db:Video_DB, timeout = 600):
     """
     Use ffmpeg to burn substitles into the video. 
     Redirect video_db to the subtitled_video, and delete the unsubtitled one. 
@@ -177,33 +177,37 @@ def burn_subtitle(video_db:Video_DB):
     import ffmpeg
     run: subprocess.Popen = (ffmpeg.input(
         video_db.videoname,
-        vcodec="h264_cuvid",  # GPU accelerated decoding
+        vcodec="h264_cuvid",  # GPU accelerated
         loglevel = "warning",
     )
         .filter("ass", video_db.subtitle_file)
         .output(
-        subtitledVideo,
-        vcodec="h264_nvenc",  # GPU accelerated encoding
-        # acodec="copy",
-        map="0:a",  # Map audio channel
-        cq="30"  # Lower number means better quality and larger size
-    )
+            subtitledVideo,
+            vcodec="h264_nvenc",  # GPU accelerated
+            acodec="copy",
+            map="0:a",  # Map audio channel
+            cq="30",  # Lower number means better quality and larger size
+            flvflags = "add_keyframe_index"     #Used to facilitate seeking
+        )
         # .overwrite_output()          #Overwrite output files without asking (ffmpeg -y option)
         .run_async()
     )
 
     #Check whether the size of output is changing.
     size = 0 
+    delta_t = 10
     try:
         prev_size = 0
         while True:
-            time.sleep(10)
+            time.sleep(delta_t)
             size = 0 if not os.path.isfile(subtitledVideo) else os.path.getsize(subtitledVideo)
 
             if run.poll() is None:
                 if size == prev_size:
-                    print("=============embed_subtitle not working somehow!==============")
-                    break
+                    timeout = timeout - delta_t
+                    if timeout <= 0:
+                        print("=============embed_subtitle not working somehow!==============")
+                        break
             else:
                 print("=============embed_subtitle terminated!==============")
                 break

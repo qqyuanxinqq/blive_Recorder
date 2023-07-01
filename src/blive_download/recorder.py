@@ -62,8 +62,7 @@ class Recorder():
         self.up_name = up_name
         self.callback_list:List[Callable[[Video_DB],None]]
         # self.callback_list = [
-        #     flvmeta,
-        #     self.dump_video_json
+        #     flvmeta
         # ]
         # self.record = record_source
 
@@ -219,6 +218,9 @@ class Recorder():
     def __finalize_new_video(self, video: Video_DB, rtncode, video_size):
 
         def finalize_wrapper(is_stored: bool, end_time: int, size: int, storage_stg: int) -> Callable[[Video_DB],None]:
+            '''
+            Return a live-specified function to finalized the video
+            '''
             def _(video: Video_DB)->None:
                 self.live.finalize_video(is_stored, end_time, size, storage_stg, video = video)
             return _

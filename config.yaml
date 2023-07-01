@@ -44,7 +44,17 @@ _default:
     divide_video:
     - size
     - 1
+    #If it's set to 1, the FLV metadata will be updated using flvmeta.Set 0 to disable it.
     flvtag_update: 1
+    
+    #Path for video storage, videos will be saved under path/<UP_name>/. Can be relative or absolute.
     path: Videos/
-    storage_stg: 0
+    
+    #The priority on deletion when automatic storage clean-up is executed.
+        # 0: it can be deleted. 
+        # 1: it won't be deleted.
+        # 2: it can be delted after the upload.
+    storage_stg: 1
+
+    #If it's set to 1, the videos will be updated according to the Upload_congfiuration.Set 0 to disable it.
     upload_flag: 0

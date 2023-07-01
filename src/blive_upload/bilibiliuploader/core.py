@@ -382,7 +382,7 @@ def upload_chunk(upload_url, server_file_name, local_file_name, chunk_data, chun
         'md5': (None, cipher.md5_bytes(chunk_data)),
         'file': (local_file_name, chunk_data, 'application/octet-stream')
     }
-    status, r = Retry(max_retry=max_retry, check_func= check_upload_chunk).run(
+    status, r = Retry(max_retry=max_retry, interval = 1 ,check_func= check_upload_chunk).run(
         requests.post,
         url=upload_url,
         files=files,
