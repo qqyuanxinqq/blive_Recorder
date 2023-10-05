@@ -5,3 +5,4 @@ pyasn1>=0.4.8
 requests>=2.23.0
 rsa>=4.0
 urllib3>=1.25.9
+ffmpeg-python==0.2.0

@@ -161,10 +161,14 @@ def burn_subtitle(video_db:Video_DB, timeout = 600):
     Use ffmpeg to burn substitles into the video. 
     Redirect video_db to the subtitled_video, and delete the unsubtitled one. 
     """
-
-    assert video_db.subtitle_file
-    assert os.path.isfile(video_db.subtitle_file)
-    assert os.path.isfile(video_db.videoname)
+    try:
+        assert video_db.subtitle_file
+        assert os.path.isfile(video_db.subtitle_file)
+        assert os.path.isfile(video_db.videoname)
+    except AssertionError as e:
+        logging.exception(e)
+        print("No substitle burning")
+        return
 
     import subprocess
     process = subprocess.run(['ffmpeg', '-version'], stdout= subprocess.PIPE)

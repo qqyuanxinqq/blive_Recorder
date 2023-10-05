@@ -114,7 +114,7 @@ class App():
 
     def prep_record_Process(self, up_name) :
         p = Myproc(target = self.run_recorder, args=(up_name, self.configpath), name = "[{}]Recorder".format(up_name))
-        logfile = os.path.join(LOG_PATH, up_name + self.time_create.strftime("_%Y%m%d_%H-%M-%S") + '.log')
+        logfile = os.path.join(LOG_PATH, up_name + datetime.datetime.now().strftime("_%Y%m%d_%H-%M-%S") + '.log')
         p.set_output_err(logfile)
         return p
     def run_record_Process(self,up_name, p):
